@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flow - Pomodoro</title>
+    <meta name="theme-color" id="theme-color-meta" content="#f1f5f9">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +19,9 @@
             position: relative;
             transition: background-color 1s ease-in-out;
         }
+
+    /* Respect des widgets natifs en mode sombre */
+    body.theme-night { color-scheme: dark; }
 
         body::before,
         body::after {
@@ -86,15 +90,36 @@
         .ultra-focus-active .top-controls {
             opacity: 0; pointer-events: none; transform: scale(0.95);
         }
+
+        /* --- TOGGLE THEME minimaliste --- */
+        .theme-toggle { position: relative; width: 56px; height: 32px; border-radius: 9999px; border: 1px solid var(--glass-border); display: flex; align-items: center; padding: 2px; background: rgba(255,255,255,0.4); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .4s ease, border-color .4s ease; }
+        .theme-night .theme-toggle { background: rgba(0,0,0,0.4); }
+        .theme-toggle .knob { position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 9999px; background: linear-gradient(145deg, #ffffff, #e5e7eb); box-shadow: 0 2px 10px rgba(0,0,0,.15); transition: transform .35s cubic-bezier(.4,0,.2,1), background .4s ease, box-shadow .4s ease; }
+        .theme-night .theme-toggle .knob { background: linear-gradient(145deg, #0f172a, #020617); box-shadow: 0 2px 12px rgba(0,0,0,.5); }
+        .theme-toggle.is-dark .knob { transform: translateX(24px); }
+        .theme-toggle .icon { width: 18px; height: 18px; z-index: 1; opacity: .85; transition: opacity .35s ease, transform .35s ease; color: currentColor; }
+        .theme-toggle .icon-sun { margin-left: 8px; }
+        .theme-toggle .icon-moon { margin-left: auto; margin-right: 8px; }
+        .theme-toggle.is-dark .icon-sun { opacity: .35; }
+        .theme-toggle.is-dark .icon-moon { opacity: 1; }
+        @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+        .theme-day ::placeholder { color: rgba(15,23,42,0.5); }
+        .theme-night ::placeholder { color: rgba(226,232,240,0.5); }
     </style>
 </head>
 <body>
 
     <div class="top-controls absolute top-6 right-6 z-20 flex items-center space-x-4 transition-all duration-500">
-        <!-- NOUVEAU: Bouton Play/Pause pour le son ambiant, plus grand -->
-        <button id="ambient-sound-btn" class="control-btn bg-black/20 hover:bg-black/40 w-14 h-14 flex items-center justify-center">
-            <svg id="sound-on-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-            <svg id="sound-off-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+        <!-- Toggle Thème: Sun/Moon minimaliste -->
+        <button id="theme-toggle" class="theme-toggle" aria-label="Basculer le thème" aria-pressed="false" title="Thème (touche D)">
+            <svg class="icon icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            </svg>
+            <svg class="icon icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <span class="knob" aria-hidden="true"></span>
         </button>
         <!-- NOUVEAU: Bouton Ultra-Focus plus grand -->
         <button id="ultra-focus-btn" class="control-btn bg-black/20 hover:bg-black/40 w-14 h-14 flex items-center justify-center">
@@ -141,30 +166,32 @@
 
     <script>
         // --- DOM Elements & State ---
-        const elements = { body: document.body, mainContent: document.getElementById('main-content'), timerDisplay: document.getElementById('timer-display'), startPauseBtn: document.getElementById('start-pause-btn'), resetBtn: document.getElementById('reset-btn'), modeButtons: document.querySelectorAll('.mode-btn'), intentionInput: document.getElementById('intention-input'), intentionDisplay: document.getElementById('intention-display'), cycleDots: document.querySelectorAll('#pomodoro-counter .cycle-dot'), ultraFocusBtn: document.getElementById('ultra-focus-btn'), settingsModal: document.getElementById('settings-modal'), saveSettingsBtn: document.getElementById('save-settings-btn'), ambientSoundBtn: document.getElementById('ambient-sound-btn'), soundOnIcon: document.getElementById('sound-on-icon'), soundOffIcon: document.getElementById('sound-off-icon') };
+        const elements = { body: document.body, mainContent: document.getElementById('main-content'), timerDisplay: document.getElementById('timer-display'), startPauseBtn: document.getElementById('start-pause-btn'), resetBtn: document.getElementById('reset-btn'), modeButtons: document.querySelectorAll('.mode-btn'), intentionInput: document.getElementById('intention-input'), intentionDisplay: document.getElementById('intention-display'), cycleDots: document.querySelectorAll('#pomodoro-counter .cycle-dot'), ultraFocusBtn: document.getElementById('ultra-focus-btn'), settingsModal: document.getElementById('settings-modal'), saveSettingsBtn: document.getElementById('save-settings-btn'), themeToggle: document.getElementById('theme-toggle') };
         let timers = { pomodoro: 25, shortBreak: 5, longBreak: 15 };
         const SESSIONS_BEFORE_LONG_BREAK = 4;
-        let state = { currentMode: 'pomodoro', timeRemaining: 0, timerId: null, isRunning: false, pomodoroCount: 0, isAmbientSoundPlaying: false };
+        let state = { currentMode: 'pomodoro', timeRemaining: 0, timerId: null, isRunning: false, pomodoroCount: 0 };
 
         // --- Sound Engine ---
-        let notificationSynth, ambientNoise;
+        let notificationSynth;
         const initSounds = () => {
-            notificationSynth = new Tone.Synth({ oscillator: { type: 'fatsine2', partials: [0, 1, 0.5, 0.2] }, envelope: { attack: 0.01, decay: 1.4, sustain: 0.1, release: 1.4 } }).toDestination();
-            ambientNoise = new Tone.Noise("brown").set("volume", -24).toDestination();
+            const chorus = new Tone.Chorus(4, 2.5, 0.2).start();
+            const reverb = new Tone.Reverb({ decay: 2.5, wet: 0.25 });
+            notificationSynth = new Tone.FMSynth({
+                harmonicity: 3,
+                modulationIndex: 10,
+                oscillator: { type: 'sine' },
+                modulation: { type: 'sine' },
+                envelope: { attack: 0.005, decay: 1.2, sustain: 0.0, release: 1.6 },
+                modulationEnvelope: { attack: 0.005, decay: 0.2, sustain: 0.0, release: 0.2 }
+            }).chain(chorus, reverb, Tone.Destination);
         };
-        const playNotificationSound = () => notificationSynth?.triggerAttackRelease("C3", "1n", Tone.now());
-        const toggleAmbientSound = async () => {
-            await Tone.start();
-            if (!ambientNoise) initSounds();
-            state.isAmbientSoundPlaying = !state.isAmbientSoundPlaying;
-            if (state.isAmbientSoundPlaying) ambientNoise.start(); else ambientNoise.stop();
-            localStorage.setItem('flow-ambient-sound', state.isAmbientSoundPlaying);
-            updateAmbientSoundUI();
+        const playNotificationSound = () => {
+            const now = Tone.now();
+            // Petit motif de cloche agréable
+            notificationSynth?.triggerAttackRelease('C6', '8n', now);
+            notificationSynth?.triggerAttackRelease('G5', '8n', now + 0.15);
         };
-        const updateAmbientSoundUI = () => {
-            elements.soundOnIcon.classList.toggle('hidden', !state.isAmbientSoundPlaying);
-            elements.soundOffIcon.classList.toggle('hidden', state.isAmbientSoundPlaying);
-        };
+        // Ambient sound removed; keep only end-of-session ring.
 
         // --- Core Functions ---
         const updateDisplay = () => {
@@ -202,6 +229,11 @@
             elements.intentionDisplay.style.color = isNight ? 'rgba(226, 232, 240, 0.7)' : 'rgba(15, 23, 42, 0.7)';
             elements.resetBtn.style.backgroundColor = isNight ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
         };
+        const updateThemeToggleUI = () => {
+            const isDark = elements.body.classList.contains('theme-night');
+            elements.themeToggle?.setAttribute('aria-pressed', String(isDark));
+            elements.themeToggle?.classList.toggle('is-dark', isDark);
+        };
         const updateUIForState = () => {
             elements.timerDisplay.classList.remove('timer-idle', 'timer-work', 'timer-break');
             elements.body.classList.remove('state-idle', 'state-work', 'state-break');
@@ -230,6 +262,20 @@
             }
             elements.startPauseBtn.style.color = (state.isRunning || !isNight) ? '#fafafa' : '#0f172a';
             updateThemeAndColors();
+            updateThemeToggleUI();
+        };
+        const THEME_STORAGE_KEY = 'flow-theme';
+        const applyTheme = (theme, persist = true) => {
+            elements.body.classList.remove('theme-day', 'theme-night');
+            const isDark = theme === 'dark';
+            elements.body.classList.add(isDark ? 'theme-night' : 'theme-day');
+            // Meta theme-color pour barres système
+            const themeMeta = document.getElementById('theme-color-meta');
+            if (themeMeta) themeMeta.setAttribute('content', isDark ? '#000000' : '#f1f5f9');
+            // Indiquer au navigateur le schéma de couleur
+            document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+            if (persist) localStorage.setItem(THEME_STORAGE_KEY, theme);
+            updateUIForState();
         };
         const startTimer = async () => {
             if (state.isRunning) return;
@@ -279,7 +325,18 @@
         elements.ultraFocusBtn.addEventListener('click', () => elements.body.classList.toggle('ultra-focus-active'));
         elements.mainContent.addEventListener('dblclick', () => elements.body.classList.contains('ultra-focus-active') && elements.body.classList.remove('ultra-focus-active'));
         elements.saveSettingsBtn.addEventListener('click', closeSettings);
-        elements.ambientSoundBtn.addEventListener('click', toggleAmbientSound);
+    // Ambient sound button removed
+        elements.themeToggle.addEventListener('click', () => {
+            const isDark = elements.body.classList.contains('theme-night');
+            applyTheme(isDark ? 'light' : 'dark');
+        });
+        // Raccourci clavier (D)
+        document.addEventListener('keydown', (e) => {
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                elements.themeToggle.click();
+            }
+        });
         
         // --- Initial Setup ---
         const initialize = () => {
@@ -289,14 +346,12 @@
             document.getElementById('shortbreak-duration').value = timers.shortBreak;
             document.getElementById('longbreak-duration').value = timers.longBreak;
             
-            if (localStorage.getItem('flow-ambient-sound') === 'true') {
-                toggleAmbientSound();
-            } else {
-                updateAmbientSoundUI();
-            }
+            // Ambient sound preference removed
 
-            const currentHour = new Date().getHours();
-            elements.body.classList.add((currentHour >= 7 && currentHour < 19) ? 'theme-day' : 'theme-night');
+            // Thème initial: préférence utilisateur > préférence système > clair
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+            const initialTheme = savedTheme ?? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            applyTheme(initialTheme, Boolean(savedTheme));
 
             document.querySelectorAll('.mode-btn, .control-btn, .setting-input').forEach(el => {
                 if (el.tagName === 'INPUT') el.classList.add('bg-transparent', 'border', 'rounded-lg', 'w-20', 'text-center', 'py-1', 'focus:outline-none', 'focus:ring-2', 'focus:ring-white/50');
