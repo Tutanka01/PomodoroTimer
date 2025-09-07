@@ -67,7 +67,7 @@ export function DashboardPage() {
             ))}
           </div>
         </section>
-  <section className="mt-8 grid gap-6 xl:grid-cols-6 lg:grid-cols-4 sm:grid-cols-3 grid-cols-2">
+        <section className="mt-8 dash-grid metrics">
           <MetricCard label="Focus (min)" value={loading? '…' : totalFocusMin} accent />
           <MetricCard label="Today" value={loading? '…': todayPomodoros} />
           <MetricCard label="Streak" value={loading? '…': streak} />
@@ -103,10 +103,9 @@ function Header({ nav, toggleTheme, isDark }) {
 
 function MetricCard({ label, value, accent }) {
   return (
-    <div className={`rounded-2xl p-4 relative overflow-hidden group ${accent? 'bg-gradient-to-br from-pink-500/70 to-indigo-600/60 text-white':'bg-white/10 dark:bg-white/5'}`}>
-      <div className="text-[11px] uppercase tracking-wide opacity-70 group-hover:opacity-90 transition-opacity">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-      <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-30 transition-opacity bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.6),transparent_60%)]" />
+    <div className={`metric-card ${accent? 'accent':''}`}>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value tabular-nums">{value}</div>
     </div>
   );
 }
@@ -139,9 +138,10 @@ function ChartsSection({ loading, daily, range }) {
 function LevelProgress({ info }) {
   if (!info) return null;
   return (
-    <div className="mt-10">
+    <div className="mt-10 panel">
+      <div className="mini-grid-bg" />
       <h2 className="text-sm uppercase tracking-wide opacity-60 mb-3">Level Progress</h2>
-      <div className="rounded-2xl p-5 bg-white/10 dark:bg-white/5">
+      <div>
         <div className="flex justify-between text-xs opacity-70 mb-2"><span>Level {info.level}</span><span>{Math.round(info.progress*100)}%</span></div>
         <div className="h-3 rounded-full bg-white/10 overflow-hidden">
           <div className="h-full bg-gradient-to-r from-pink-500 to-indigo-500 transition-all" style={{ width: `${Math.min(100, info.progress*100)}%`}} />
@@ -156,7 +156,8 @@ function MonthCalendar({ matrix, loading, onPrev, onNext, offset }) {
   if (!matrix) return null;
   const max = matrix.weeks.flat().filter(Boolean).reduce((m,c)=>Math.max(m,c.seconds),0) || 1;
   return (
-    <section className="mt-14">
+    <section className="mt-14 panel">
+      <div className="mini-grid-bg" />
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <button onClick={onPrev} className="text-xs opacity-60 hover:opacity-100 px-2 py-1 rounded bg-white/10">←</button>

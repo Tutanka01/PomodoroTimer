@@ -1,0 +1,35 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Build-time: values substituted from root .env (NOT bundled unless referenced by Vite during build)
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: flow-pomodoro:latest
+    container_name: flow-pomodoro
+    restart: unless-stopped
+    env_file:
+      - .env   # create this at repo root (copy from .env.example)
+    environment:
+      NODE_ENV: production
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    read_only: false
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Flow Pomodoro"
+
+# For production behind reverse proxy:
+# 1. Set up TLS termination (e.g., Traefik / Caddy / Nginx) mapping port 443 -> web:80
+# 2. Provide proper caching headers already configured via nginx.conf
+# 3. Scale horizontally by adding replicas behind a load balancer (stateless static app)
