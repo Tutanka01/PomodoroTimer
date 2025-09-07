@@ -5,17 +5,30 @@ import { Intention } from './Intention.jsx';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import { useTheme } from './useTheme.js';
 import { usePomodoro } from './usePomodoro.js';
+import { logSession, fetchRecentStats } from './sessionStore.js';
 import { t } from './i18n.js';
 import { useAuth } from './useAuth.js';
 import { Link } from 'react-router-dom';
 
 export default function App() {
   const { theme, toggleTheme, isDark } = useTheme();
-  const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro();
+  const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro({
+    onSessionComplete: async ({ mode, startedAt, endedAt }) => {
+      await logSession({ user, mode, startedAt, endedAt, intention });
+      if (user) refreshStats();
+    }
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [intention, setIntention] = useState('');
   const { user, loading: authLoading, error: authError, signIn, signUp, signOut } = useAuth();
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [stats, setStats] = useState({ sessions: [], daily: [] });
+
+  async function refreshStats() {
+    if (!user) return;
+    const data = await fetchRecentStats(user, { days: 7 });
+    setStats(data);
+  }
+  useEffect(()=> { if (user) refreshStats(); }, [user]);
 
   // minimal session logging (client-only for now) when a pomodoro completes
   useEffect(()=> {
@@ -36,7 +49,7 @@ export default function App() {
         <ThemeToggle isDark={isDark} toggle={toggleTheme} />
         {user ? (
           <>
-            <button onClick={()=>setShowDashboard(d=>!d)} className="text-xs opacity-70 hover:opacity-100 underline">Dashboard</button>
+            <Link to="/dashboard" className="text-xs opacity-70 hover:opacity-100 underline">Dashboard</Link>
             <button onClick={signOut} className="text-xs opacity-70 hover:opacity-100 transition-colors underline">{t('logout')}</button>
           </>
         ) : (
@@ -70,26 +83,12 @@ export default function App() {
       {showSettings && (
         <SettingsModal durations={state.durations} onClose={(d) => { if (d) updateDurations(d); setShowSettings(false); }} />
       )}
-      {showDashboard && user && (
-        <DashboardModal onClose={()=>setShowDashboard(false)} user={user} />
-      )}
     </main>
   );
 }
 
 
-function DashboardModal({ onClose, user }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="glass-container w-full max-w-md rounded-2xl p-6 relative">
-        <button onClick={onClose} className="absolute top-2 right-2 text-xs opacity-60 hover:opacity-100">✕</button>
-        <h2 className="text-xl font-semibold mb-4">Dashboard</h2>
-        <p className="text-sm opacity-70 mb-4">Coming soon: focus streaks, session stats.</p>
-        <div className="text-xs opacity-60 break-all">User: {user.email}</div>
-      </div>
-    </div>
-  );
-}
+// removed old modal/dashboard code (now dedicated page)
 
 function SettingsModal({ durations, onClose }) {
   const [form, setForm] = useState(durations);

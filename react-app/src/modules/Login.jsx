@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './useAuth.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import { t } from './i18n.js';
@@ -11,7 +11,8 @@ export function LoginPage({ isDark, toggleTheme, redirectHome }) {
   const [confirm, setConfirm] = useState('');
   const [localError, setLocalError] = useState(null);
   const [emailSent, setEmailSent] = useState(false);
-  if (user) { redirectHome(); return null; }
+  useEffect(()=> { if (user) redirectHome(); }, [user, redirectHome]);
+  if (user) return null;
   async function submit(e) {
     e.preventDefault(); setLocalError(null);
     if (mode==='signup') {

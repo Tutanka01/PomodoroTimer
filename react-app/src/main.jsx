@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import './main.css';
 import App from './modules/App.jsx';
 import { LoginPage } from './modules/Login.jsx';
+import { DashboardPage } from './modules/Dashboard.jsx';
 import { useTheme } from './modules/useTheme.js';
 
 function RootRouter(){
@@ -13,6 +14,7 @@ function RootRouter(){
 		<Routes>
 			<Route path="/" element={<App />} />
 			<Route path="/login" element={<LoginPage isDark={isDark} toggleTheme={toggleTheme} redirectHome={()=>nav('/')} />} />
+			<Route path="/dashboard" element={<DashboardPage />} />
 		</Routes>
 	);
 }

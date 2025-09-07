@@ -59,7 +59,7 @@ function reducer(state, action) {
   }
 }
 
-export function usePomodoro() {
+export function usePomodoro({ onSessionComplete } = {}) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const intervalRef = useRef(null);
   const lastRemainingRef = useRef(state.timeRemaining);
@@ -80,6 +80,13 @@ export function usePomodoro() {
       }
       if (remainingMs <= 0) {
         playNotificationSound(state.currentMode==='pomodoro');
+        // callback avant mutation pour fournir l'ancien mode avec plage temporelle
+        if (onSessionComplete) {
+          const duration = state.durations[state.currentMode] * 60;
+          const endedAt = new Date();
+            const startedAt = new Date(endedAt.getTime() - duration * 1000);
+          try { onSessionComplete({ mode: state.currentMode, startedAt, endedAt }); } catch(e){ console.error(e); }
+        }
         dispatch({ type: 'COMPLETE_CYCLE' });
       }
     };
