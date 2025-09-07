@@ -28,11 +28,11 @@ export function DashboardPage() {
     setStats(data); setLoading(false);
   }, [user, range]);
 
-  // Lifetime stats (heavier query isolée pour ne pas bloquer le reste)
+  // Lifetime stats (separate heavier query to avoid blocking main load)
   const loadLifetime = useCallback(async () => {
     if (!user) return;
     try {
-      // On récupère jusqu'à 1000 jours d'historique agrégé (suffisant pour > 2 ans)
+  // Fetch up to 1000 days of aggregated history (enough for > 2 years)
       const { data: allDaily, error: dailyErr } = await supabase
         .from('user_daily_focus')
         .select('*')
@@ -51,7 +51,7 @@ export function DashboardPage() {
     }
   }, [user]);
 
-  // Rediriger seulement quand on sait que l'utilisateur n'est pas connecté (pas pendant le chargement)
+  // Redirect only once auth finished and user is not logged in
   useEffect(()=> { if (!authLoading && !user) nav('/login'); }, [authLoading, user, nav]);
   useEffect(()=> { if (!authLoading && user) { load(); loadLifetime(); loadPrefs(); } }, [authLoading, user, load, loadLifetime]);
 
@@ -66,7 +66,7 @@ export function DashboardPage() {
   const todaySessions = safe.sessions.filter(s=>s.mode==='pomodoro' && (s.started_at||'').startsWith(todayStr));
   const todayFocusMin = Math.round(todaySessions.reduce((a,s)=>a+(s.duration_seconds||0),0)/60);
   const todayPomodoros = todaySessions.length;
-  const streak = lifetime.currentStreak; // remplace par lifetime pour plus de cohérence
+  const streak = lifetime.currentStreak; // use lifetime streak for consistency
   const pomos = safe.sessions.filter(s=>s.mode==='pomodoro');
   const avgPomodoroLength = averageLength(pomos);
   const focusRatio = buildFocusRatio(safe.sessions);
@@ -81,7 +81,7 @@ export function DashboardPage() {
   const DAILY_GOAL_MIN = prefs.daily_focus_goal_min || 120;
   const goalProgress = Math.min(1, todayFocusMin / DAILY_GOAL_MIN);
 
-  // Comparaison semaine courante vs précédente (toujours sur 7 jours pour clarté)
+  // Current week vs previous week comparison (always last rolling 7 days for clarity)
   useEffect(()=>{
     if (!stats.daily?.length) return;
     const now = new Date();
@@ -96,7 +96,7 @@ export function DashboardPage() {
     setCompareRange({ current:last7, previous:prev7, deltaMinutes: Math.round(delta/60), percent: Math.round(pct) });
   }, [stats.daily]);
 
-  // Pendant phase de détermination de la session on affiche un écran neutre (évite flicker)
+  // During auth resolution show neutral screen (avoid flicker)
   if (authLoading) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center ${isDark?'theme-night':'theme-day'}`}> 
@@ -122,7 +122,7 @@ export function DashboardPage() {
                 <button key={d} onClick={()=>setRange(d)} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${range===d? 'bg-gradient-to-r from-pink-500 to-indigo-500 text-white shadow':'opacity-60 hover:opacity-100'}`}>{d}d</button>
               ))}
             </div>
-            <button className="share-btn hidden sm:inline-flex" title="Partager vos progrès (à venir)">Share</button>
+            <button className="share-btn hidden sm:inline-flex" title="Share your progress (coming soon)">Share</button>
           </div>
         </section>
 
@@ -146,7 +146,7 @@ export function DashboardPage() {
         </div>
 
         <div className="mt-8 text-right">
-          <button onClick={()=>setShowAdvanced(s=>!s)} className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors">{showAdvanced? 'Masquer quelques modules' : 'Afficher tous les modules'}</button>
+          <button onClick={()=>setShowAdvanced(s=>!s)} className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors">{showAdvanced? 'Hide some modules' : 'Show all modules'}</button>
         </div>
       </main>
       <footer className="text-center py-6 text-xs opacity-50">Crafted for deep focus · {user?.email}</footer>
@@ -182,7 +182,7 @@ function TodayFocusPanel({ loading, todayFocusMin, todayPomodoros, goal, goalPro
   return (
     <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-4 order-1">
       <div className="mini-grid-bg" />
-      <h2 className="text-sm uppercase tracking-wide opacity-60">Aujourd'hui</h2>
+  <h2 className="text-sm uppercase tracking-wide opacity-60">Today</h2>
       <div className="flex items-center gap-6">
         <div className="focus-ring-wrapper">
           <div className="focus-ring" style={{ background: `conic-gradient(var(--ring-accent) ${pct}%, var(--ring-bg) ${pct}% 100%)` }}>
@@ -192,13 +192,13 @@ function TodayFocusPanel({ loading, todayFocusMin, todayPomodoros, goal, goalPro
         </div>
         <div className="flex-1 grid grid-cols-2 gap-4 text-xs">
           <div className="stat-mini"><span className="lbl">Sessions</span><span className="val">{loading? '…': todayPomodoros}</span></div>
-          <div className="stat-mini"><span className="lbl">Objectif</span><span className="val">{goal}m</span></div>
+          <div className="stat-mini"><span className="lbl">Goal</span><span className="val">{goal}m</span></div>
           <div className="stat-mini"><span className="lbl">Moy. Pomodoro</span><span className="val">{loading? '…': avgPomodoroLength}m</span></div>
           <div className="stat-mini"><span className="lbl">Restant</span><span className="val">{Math.max(0, goal - todayFocusMin)}m</span></div>
         </div>
       </div>
       <p className="text-[11px] leading-snug opacity-60">
-        {goalProgress>=1 ? 'Objectif journalier atteint. Bonus d\'habitude verrouillé ✅' : `Atteignez ${goal} min pour sécuriser votre streak.`}
+  {goalProgress>=1 ? 'Daily goal reached. Habit bonus secured ✅' : `Reach ${goal} min to secure your streak.`}
       </p>
       <GoalEditor current={goal} onChange={onGoalChange} saving={savingGoal} />
     </section>
@@ -210,9 +210,9 @@ function GoalEditor({ current, onChange, saving }) {
   useEffect(()=>{ setVal(current); }, [current]);
   return (
     <div className="flex items-center gap-2 text-[11px] flex-wrap">
-      <span className="opacity-60 uppercase tracking-wide">Objectif quotidien</span>
+  <span className="opacity-60 uppercase tracking-wide">Daily goal</span>
       <input type="number" min={15} step={15} value={val} onChange={e=>setVal(e.target.value)} className="goal-input" />
-      <button disabled={saving || val==current} onClick={()=>onChange(Number(val)||current)} className="goal-save-btn disabled:opacity-40 disabled:cursor-not-allowed">{saving? '...':'Sauver'}</button>
+  <button disabled={saving || val==current} onClick={()=>onChange(Number(val)||current)} className="goal-save-btn disabled:opacity-40 disabled:cursor-not-allowed">{saving? '...':'Save'}</button>
     </div>
   );
 }
@@ -226,12 +226,12 @@ function StreaksPanel({ loading, current, longest, consistency, range, goalAchie
         <div className="streak-box">
           <span className="lbl">Streak actuel</span>
           <span className="big-val">{loading? '…': current}</span>
-          <span className="sm-note">jours</span>
+          <span className="sm-note">days</span>
         </div>
         <div className="streak-box">
-          <span className="lbl">Meilleur</span>
+          <span className="lbl">Best</span>
             <span className="big-val">{loading? '…': longest}</span>
-          <span className="sm-note">jours</span>
+          <span className="sm-note">days</span>
         </div>
         <div className="streak-box">
           <span className="lbl">Consistance</span>
@@ -239,12 +239,12 @@ function StreaksPanel({ loading, current, longest, consistency, range, goalAchie
           <span className="sm-note">sur {range}j</span>
         </div>
         <div className="streak-box">
-          <span className="lbl">Sécurité</span>
-          <span className={`badge ${goalAchieved? 'ok':'pending'}`}>{goalAchieved? 'OK':'En cours'}</span>
-          <span className="sm-note">objectif quotidien</span>
+          <span className="lbl">Safety</span>
+          <span className={`badge ${goalAchieved? 'ok':'pending'}`}>{goalAchieved? 'OK':'In progress'}</span>
+          <span className="sm-note">daily goal</span>
         </div>
       </div>
-      <p className="text-[11px] leading-snug opacity-60">Maintenez votre streak en atteignant l'objectif quotidien. La constance est plus puissante que l'intensité.</p>
+  <p className="text-[11px] leading-snug opacity-60">Keep your streak by hitting the daily goal. Consistency beats intensity.</p>
     </section>
   );
 }
@@ -264,11 +264,11 @@ function LifetimePanel({ lifetime }) {
         </div>
         <div className="life-box">
           <span className="val">{lifetime.loading? '…': lifetime.focusDays}</span>
-          <span className="lbl">jours actifs</span>
+          <span className="lbl">active days</span>
         </div>
         <div className="life-box col-span-3 mt-2">
           <span className="val text-base">🔥 {lifetime.loading? '…': lifetime.longestStreak} j</span>
-          <span className="lbl">meilleure série</span>
+          <span className="lbl">best streak</span>
         </div>
       </div>
     </div>
@@ -280,7 +280,7 @@ function ChartsSection({ loading, daily, range, compare }) {
   const max = Math.max(1, ...daily.map(d=>d.focus_seconds));
   return (
     <div>
-      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-4">Timeline (Derniers {range} Jours)</h2>
+  <h2 className="text-sm uppercase tracking-wide opacity-60 mb-4">Timeline (Last {range} Days)</h2>
       <div className="flex gap-2 items-end h-40">
         {days.map(d => {
           const rec = daily.find(r=>r.day===d);
@@ -298,10 +298,10 @@ function ChartsSection({ loading, daily, range, compare }) {
       </div>
       {compare.current.length===7 && (
         <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] comparison-bar">
-          <span className="opacity-60 uppercase tracking-wide">Comparaison Semaine</span>
+          <span className="opacity-60 uppercase tracking-wide">Weekly Comparison</span>
           <span className={`delta ${compare.deltaMinutes>=0? 'pos':'neg'}`}>{compare.deltaMinutes>=0? '+':''}{compare.deltaMinutes} min</span>
           <span className={`delta ${compare.percent>=0? 'pos':'neg'}`}>{compare.percent>=0? '+':''}{compare.percent}%</span>
-          <span className="opacity-40">vs 7 j précédents</span>
+          <span className="opacity-40">vs previous 7 days</span>
         </div>
       )}
     </div>

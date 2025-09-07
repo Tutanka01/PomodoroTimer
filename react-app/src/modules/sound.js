@@ -36,7 +36,7 @@ export async function ensureAudio() {
 export function playStartSound(isWork) {
   if (!initialized) return;
   const now = Tone.now();
-  // Deux petites notes ascendantes, un peu plus élevées si session travail
+  // Two short ascending notes, slightly higher if work session
   startSynth.triggerAttackRelease(isWork ? 'E5' : 'D5', '16n', now, 0.7);
   startSynth.triggerAttackRelease(isWork ? 'B5' : 'A5', '16n', now + 0.12, 0.6);
 }
@@ -44,7 +44,7 @@ export function playStartSound(isWork) {
 export function playNotificationSound(workFinished) {
   if (!initialized) return;
   const now = Tone.now();
-  // Motif simple, plus brillant si on termine un pomodoro
+  // Simple motif, brighter if finishing a pomodoro
   if (workFinished) {
     notificationSynth.triggerAttackRelease('C6', '8n', now, 0.9);
     notificationSynth.triggerAttackRelease('G5', '8n', now + 0.15, 0.75);
