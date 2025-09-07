@@ -24,7 +24,7 @@ function reducer(state, action) {
         const total = state.durations[state.currentMode] * 60;
         return { ...state, timeRemaining: remaining, progress: 1 - (remaining / total) };
       }
-      return state; // transitions gérées par COMPLETE_CYCLE
+  return state; // transitions handled by COMPLETE_CYCLE
     }
     case 'COMPLETE_CYCLE': {
       if (state.currentMode === 'pomodoro') {
@@ -35,7 +35,7 @@ function reducer(state, action) {
           currentMode: longBreak ? 'longBreak' : 'shortBreak',
           timeRemaining: state.durations[longBreak ? 'longBreak' : 'shortBreak'] * 60,
           pomodoroCount: longBreak ? 0 : newCount,
-          uiState: 'state-idle', // mettre idle pour que l'utilisateur doive cliquer Start
+          uiState: 'state-idle', // set idle so user must click Start
           progress: 0,
           isRunning: false,
           targetEpoch: null
@@ -50,7 +50,7 @@ function reducer(state, action) {
         targetEpoch: Date.now() + state.durations.pomodoro * 60 * 1000
       };
     }
-  case 'START': return { ...state, isRunning: true, uiState: state.currentMode==='pomodoro' ? 'state-work' : 'state-break', targetEpoch: Date.now() + state.timeRemaining * 1000 }; // timeRemaining déjà en secondes
+  case 'START': return { ...state, isRunning: true, uiState: state.currentMode==='pomodoro' ? 'state-work' : 'state-break', targetEpoch: Date.now() + state.timeRemaining * 1000 }; // timeRemaining already in seconds
     case 'PAUSE': return { ...state, isRunning: false, uiState: 'state-idle' };
   case 'RESET': return { ...state, isRunning: false, timeRemaining: state.durations[state.currentMode] * 60, uiState: 'state-idle', progress: 0, targetEpoch: null };
   case 'SWITCH_MODE': return { ...state, currentMode: action.mode, timeRemaining: state.durations[action.mode] * 60, isRunning: false, uiState: 'state-idle', progress: 0, targetEpoch: null };
@@ -80,7 +80,7 @@ export function usePomodoro({ onSessionComplete } = {}) {
       }
       if (remainingMs <= 0) {
         playNotificationSound(state.currentMode==='pomodoro');
-        // callback avant mutation pour fournir l'ancien mode avec plage temporelle
+  // callback before mutation to provide previous mode & time window
         if (onSessionComplete) {
           const duration = state.durations[state.currentMode] * 60;
           const endedAt = new Date();
@@ -92,7 +92,7 @@ export function usePomodoro({ onSessionComplete } = {}) {
     };
     sync();
     intervalRef.current = setInterval(sync, 1000);
-    // Re-sync immédiat quand l'onglet redevient visible
+  // Immediate re-sync when tab becomes visible again
     const visHandler = () => sync();
     document.addEventListener('visibilitychange', visHandler);
     return () => { clearInterval(intervalRef.current); intervalRef.current=null; document.removeEventListener('visibilitychange', visHandler); };
@@ -107,7 +107,7 @@ export function usePomodoro({ onSessionComplete } = {}) {
 
   useEffect(()=> { if (state.isRunning) { ensureAudio().then(()=> { playStartSound(state.currentMode==='pomodoro'); }); } }, [state.isRunning, state.currentMode]);
 
-  // Plus de listener séparé: la fin est gérée dans sync loop
+  // No separate end listener: handled inside sync loop
 
   function start() { dispatch({ type: 'START' }); }
   function pause() { dispatch({ type: 'PAUSE' }); }

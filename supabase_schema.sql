@@ -104,3 +104,19 @@ revoke all on public.user_daily_focus from public;
 grant select on public.user_daily_focus to authenticated;
 
 -- DONE
+
+-- USER PREFERENCES (daily goal etc.)
+create table if not exists public.user_preferences (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  daily_focus_goal_min int not null default 120,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.user_preferences enable row level security;
+create policy "select_own_prefs" on public.user_preferences for select using (auth.uid() = user_id);
+create policy "insert_own_prefs" on public.user_preferences for insert with check (auth.uid() = user_id);
+create policy "update_own_prefs" on public.user_preferences for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "delete_own_prefs" on public.user_preferences for delete using (auth.uid() = user_id);
+
+grant select, insert, update, delete on public.user_preferences to authenticated;
