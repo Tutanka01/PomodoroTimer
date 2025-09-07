@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './useAuth.js';
 import { useTheme } from './useTheme.js';
 import { fetchRecentStats } from './sessionStore.js';
+import { computeHourlyHistogram, computeConsistency, computeLongestStreak, computeLevel, buildMonthMatrix } from './statsUtils.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
 
 export function DashboardPage() {
@@ -10,6 +11,7 @@ export function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [range, setRange] = useState(7);
+  const [showAdvanced, setShowAdvanced] = useState(true);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ sessions: [], daily: [] });
   const [error, setError] = useState(null);
@@ -30,8 +32,17 @@ export function DashboardPage() {
   const today = new Date().toISOString().slice(0,10);
   const todayPomodoros = safe.sessions.filter(s=>s.mode==='pomodoro' && (s.started_at||'').startsWith(today)).length;
   const streak = computeStreak(safe.daily||[]);
-  const avgPomodoroLength = averageLength(safe.sessions.filter(s=>s.mode==='pomodoro'));
+  const pomos = safe.sessions.filter(s=>s.mode==='pomodoro');
+  const avgPomodoroLength = averageLength(pomos);
   const focusRatio = buildFocusRatio(safe.sessions);
+  const hourly = computeHourlyHistogram(safe.sessions);
+  const consistency = computeConsistency(safe.daily, range);
+  const longestStreak = computeLongestStreak(safe.daily);
+  const levelInfo = computeLevel(totalFocusMin);
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, -1 = prev, +1 = next
+  const baseDate = new Date();
+  const viewDate = new Date(baseDate.getFullYear(), baseDate.getMonth()+monthOffset, 1);
+  const monthMatrix = buildMonthMatrix(safe.sessions, viewDate.getFullYear(), viewDate.getMonth());
 
   // Pendant phase de détermination de la session on affiche un écran neutre (évite flicker)
   if (authLoading) {
@@ -56,14 +67,20 @@ export function DashboardPage() {
             ))}
           </div>
         </section>
-        <section className="mt-8 grid gap-6 md:grid-cols-5 sm:grid-cols-3 grid-cols-2">
+  <section className="mt-8 grid gap-6 xl:grid-cols-6 lg:grid-cols-4 sm:grid-cols-3 grid-cols-2">
           <MetricCard label="Focus (min)" value={loading? '…' : totalFocusMin} accent />
           <MetricCard label="Today" value={loading? '…': todayPomodoros} />
-            <MetricCard label="Streak" value={loading? '…': streak} />
-          <MetricCard label="Avg / Pomo" value={loading? '…': avgPomodoroLength+'m'} />
-          <MetricCard label="Focus Ratio" value={loading? '…': focusRatio+'%'} />
+          <MetricCard label="Streak" value={loading? '…': streak} />
+          <MetricCard label="Consistency" value={loading? '…': consistency+'%'} />
+          <MetricCard label="Longest" value={loading? '…': longestStreak} />
+          <MetricCard label={`Lvl ${levelInfo.level}`} value={Math.round(levelInfo.progress*100)+'%'} />
         </section>
-        <ChartsSection loading={loading} daily={safe.daily} range={range} />
+  {showAdvanced && <LevelProgress info={levelInfo} />}
+        <div className="mt-8 flex justify-end">
+          <button onClick={()=>setShowAdvanced(s=>!s)} className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors">{showAdvanced? 'Hide advanced' : 'Show advanced'}</button>
+        </div>
+        <ChartsSection loading={loading} daily={safe.daily} range={range} hourly={hourly} />
+        {showAdvanced && <MonthCalendar matrix={monthMatrix} loading={loading} onPrev={()=>setMonthOffset(o=>o-1)} onNext={()=>setMonthOffset(o=>o+1)} offset={monthOffset} />}
         <RecentSessions loading={loading} sessions={safe.sessions} />
       </main>
       <footer className="text-center py-6 text-xs opacity-50">Crafted for deep focus · {user?.email}</footer>
@@ -114,6 +131,55 @@ function ChartsSection({ loading, daily, range }) {
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function LevelProgress({ info }) {
+  if (!info) return null;
+  return (
+    <div className="mt-10">
+      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-3">Level Progress</h2>
+      <div className="rounded-2xl p-5 bg-white/10 dark:bg-white/5">
+        <div className="flex justify-between text-xs opacity-70 mb-2"><span>Level {info.level}</span><span>{Math.round(info.progress*100)}%</span></div>
+        <div className="h-3 rounded-full bg-white/10 overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-pink-500 to-indigo-500 transition-all" style={{ width: `${Math.min(100, info.progress*100)}%`}} />
+        </div>
+        <div className="text-[10px] opacity-50 mt-2">Next level in {info.needed - info.current} min</div>
+      </div>
+    </div>
+  );
+}
+
+function MonthCalendar({ matrix, loading, onPrev, onNext, offset }) {
+  if (!matrix) return null;
+  const max = matrix.weeks.flat().filter(Boolean).reduce((m,c)=>Math.max(m,c.seconds),0) || 1;
+  return (
+    <section className="mt-14">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <button onClick={onPrev} className="text-xs opacity-60 hover:opacity-100 px-2 py-1 rounded bg-white/10">←</button>
+          <h2 className="text-sm uppercase tracking-wide opacity-70">{matrix.monthLabel}</h2>
+          <button onClick={onNext} className="text-xs opacity-60 hover:opacity-100 px-2 py-1 rounded bg-white/10">→</button>
+        </div>
+        <span className="text-[10px] opacity-50">{Math.round(matrix.totalSeconds/60)} min</span>
+      </div>
+      <div className="space-y-1">
+        {matrix.weeks.map((w,i)=>(
+          <div key={i} className="grid grid-cols-7 gap-1">
+            {w.map((cell,j)=>{
+              if(!cell) return <div key={j} className="h-6 rounded-md bg-transparent" />;
+              const ratio = cell.seconds / max;
+              return (
+                <div key={j} title={`${cell.day} • ${Math.round(cell.seconds/60)} min`} className="h-6 rounded-md relative overflow-hidden bg-white/5">
+                  <div className="absolute inset-0" style={{ background: ratio? `linear-gradient(135deg, rgba(236,72,153,${0.2+0.6*ratio}), rgba(99,102,241,${0.2+0.6*ratio}))`: 'transparent' }} />
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] opacity-70 mix-blend-luminosity">{cell.day}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </section>
   );

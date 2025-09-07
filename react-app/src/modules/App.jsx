@@ -12,10 +12,15 @@ import { Link } from 'react-router-dom';
 
 export default function App() {
   const { theme, toggleTheme, isDark } = useTheme();
+  const [pendingRating, setPendingRating] = useState(null); // { startedAt, endedAt, intention }
   const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro({
     onSessionComplete: async ({ mode, startedAt, endedAt }) => {
-      await logSession({ user, mode, startedAt, endedAt, intention });
-      if (user) refreshStats();
+      if (mode==='pomodoro' && user) {
+        setPendingRating({ mode, startedAt, endedAt, intention });
+      } else {
+        await logSession({ user, mode, startedAt, endedAt, intention });
+        if (user) refreshStats();
+      }
     }
   });
   const [showSettings, setShowSettings] = useState(false);
@@ -67,7 +72,7 @@ export default function App() {
         {state.currentMode === 'pomodoro' && !state.isRunning && (
           <Intention value={intention} onChange={setIntention} />
         )}
-        <div className="flex justify-center items-center space-x-4">
+  <div className="flex justify-center items-center space-x-4">
           <button onClick={state.isRunning ? pause : start} className="control-btn control-btn-primary w-32">
             {state.isRunning ? t('pause') : state.timeRemaining < state.durations[state.currentMode] * 60 ? t('resume') : t('start')}
           </button>
@@ -83,12 +88,42 @@ export default function App() {
       {showSettings && (
         <SettingsModal durations={state.durations} onClose={(d) => { if (d) updateDurations(d); setShowSettings(false); }} />
       )}
+      {pendingRating && user && (
+        <RatingModal data={pendingRating} onClose={async (rating, interrupted) => {
+          if (rating || interrupted !== undefined) {
+            await logSession({ user, ...pendingRating, rating: rating || null });
+            if (user) refreshStats();
+          }
+          setPendingRating(null);
+        }} />
+      )}
     </main>
   );
 }
 
 
 // removed old modal/dashboard code (now dedicated page)
+
+function RatingModal({ data, onClose }) {
+  const [value, setValue] = useState(3);
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="glass-container w-full max-w-sm rounded-2xl p-6 relative">
+        <button onClick={()=>onClose()} className="absolute top-2 right-2 text-xs opacity-60 hover:opacity-100">✕</button>
+        <h3 className="text-lg font-semibold mb-4">Focus rating</h3>
+        <div className="flex justify-between mb-6 w-full">
+          {[1,2,3,4,5].map(n => (
+            <button key={n} onClick={()=>setValue(n)} className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${value===n? 'bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow':'bg-white/10 hover:bg-white/20'}`}>{n}</button>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={()=>onClose(value,false)} className="control-btn flex-1">Save</button>
+          <button onClick={()=>onClose(null,true)} className="control-btn flex-1 bg-white/10 hover:bg-white/20">Skip</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SettingsModal({ durations, onClose }) {
   const [form, setForm] = useState(durations);

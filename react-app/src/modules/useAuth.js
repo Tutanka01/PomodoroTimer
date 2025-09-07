@@ -33,5 +33,14 @@ export function useAuth() {
 
   const signOut = useCallback(async () => { await supabase.auth.signOut(); setSession(null); }, []);
 
-  return { session, user: session?.user || null, loading, error, signIn, signUp, signOut };
+  const signInWithGoogle = useCallback(async () => {
+    setError(null); setLoading(true);
+    const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+    if (error) setError(error.message);
+    // session will be set by listener after redirect
+    setLoading(false);
+    return { data, error };
+  }, []);
+
+  return { session, user: session?.user || null, loading, error, signIn, signUp, signOut, signInWithGoogle };
 }
