@@ -6,12 +6,22 @@ import { ThemeToggle } from './ThemeToggle.jsx';
 import { useTheme } from './useTheme.js';
 import { usePomodoro } from './usePomodoro.js';
 import { t } from './i18n.js';
+import { useAuth } from './useAuth.js';
+import { Link } from 'react-router-dom';
 
 export default function App() {
   const { theme, toggleTheme, isDark } = useTheme();
   const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro();
   const [showSettings, setShowSettings] = useState(false);
   const [intention, setIntention] = useState('');
+  const { user, loading: authLoading, error: authError, signIn, signUp, signOut } = useAuth();
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  // minimal session logging (client-only for now) when a pomodoro completes
+  useEffect(()=> {
+    if(!user) return;
+    // simple channel to listen later (placeholder)
+  }, [user]);
 
   useEffect(() => {
     document.body.classList.remove('theme-day', 'theme-night');
@@ -24,6 +34,14 @@ export default function App() {
     <main className={`min-h-screen w-full flex flex-col items-center justify-center p-4 transition-all duration-1000 ${state.uiState}`}>      
       <div className="top-controls absolute top-6 right-6 z-20 flex items-center space-x-4 transition-all duration-500">
         <ThemeToggle isDark={isDark} toggle={toggleTheme} />
+        {user ? (
+          <>
+            <button onClick={()=>setShowDashboard(d=>!d)} className="text-xs opacity-70 hover:opacity-100 underline">Dashboard</button>
+            <button onClick={signOut} className="text-xs opacity-70 hover:opacity-100 transition-colors underline">{t('logout')}</button>
+          </>
+        ) : (
+          <Link to="/login" className="text-xs opacity-80 hover:opacity-100 rounded-full px-3 py-1 bg-white/20 dark:bg-white/10 backdrop-blur-md border border-white/30 shadow-sm transition-colors">{t('login')}</Link>
+        )}
       </div>
       <div className="glass-container w-full max-w-lg mx-auto rounded-3xl shadow-2xl p-6 sm:p-10 text-center relative">
         <ModeSelector currentMode={state.currentMode} switchMode={switchMode} />
@@ -52,7 +70,24 @@ export default function App() {
       {showSettings && (
         <SettingsModal durations={state.durations} onClose={(d) => { if (d) updateDurations(d); setShowSettings(false); }} />
       )}
+      {showDashboard && user && (
+        <DashboardModal onClose={()=>setShowDashboard(false)} user={user} />
+      )}
     </main>
+  );
+}
+
+
+function DashboardModal({ onClose, user }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="glass-container w-full max-w-md rounded-2xl p-6 relative">
+        <button onClick={onClose} className="absolute top-2 right-2 text-xs opacity-60 hover:opacity-100">✕</button>
+        <h2 className="text-xl font-semibold mb-4">Dashboard</h2>
+        <p className="text-sm opacity-70 mb-4">Coming soon: focus streaks, session stats.</p>
+        <div className="text-xs opacity-60 break-all">User: {user.email}</div>
+      </div>
+    </div>
   );
 }
 

@@ -17,6 +17,26 @@ export const STRINGS = {
     ultraFocus: 'Ultra Focus',
     themeToggle: 'Toggle theme',
     modeSelectorAria: 'Select mode'
+  , login: 'Login'
+  , logout: 'Logout'
+  , email: 'Email'
+  , password: 'Password'
+  , confirmPassword: 'Confirm Password'
+  , signIn: 'Sign In'
+  , signUp: 'Create Account'
+  , needAccount: 'Need an account?'
+  , haveAccount: 'Have an account?'
+  , passwordMismatch: 'Passwords do not match'
+  , passwordTooShort: 'Minimum 8 characters'
+  , checkEmail: 'Check your email to confirm your account.'
+  , createAccountCta: 'Sign up'
+  , signInCta: 'Sign in'
+  , cancel: 'Cancel'
+  , submitting: 'Working...'
+  , or: 'or'
+  , switchToSignUp: 'Need an account? Sign up'
+  , switchToSignIn: 'Have an account? Sign in'
+  , authIntro: 'Optional account to sync your stats.'
   }
 };
 

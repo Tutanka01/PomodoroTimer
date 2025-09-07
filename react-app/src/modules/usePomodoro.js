@@ -18,29 +18,39 @@ const initialState = {
 
 function reducer(state, action) {
   switch(action.type) {
-  case 'TICK': {
-      const next = state.timeRemaining - 1;
-      if (next >= 0) {
+    case 'SYNC_TIME': {
+      const { remaining } = action;
+      if (remaining >= 0) {
         const total = state.durations[state.currentMode] * 60;
-        return { ...state, timeRemaining: next, progress: 1 - (next / total) };
+        return { ...state, timeRemaining: remaining, progress: 1 - (remaining / total) };
       }
-      // switch
+      return state; // transitions gérées par COMPLETE_CYCLE
+    }
+    case 'COMPLETE_CYCLE': {
       if (state.currentMode === 'pomodoro') {
         const newCount = state.pomodoroCount + 1;
         const longBreak = newCount >= SESSIONS_BEFORE_LONG_BREAK;
         return {
           ...state,
-            currentMode: longBreak ? 'longBreak' : 'shortBreak',
-            timeRemaining: state.durations[longBreak ? 'longBreak' : 'shortBreak'] * 60,
-            pomodoroCount: longBreak ? 0 : newCount,
-            uiState: 'state-break',
-            progress: 0
+          currentMode: longBreak ? 'longBreak' : 'shortBreak',
+          timeRemaining: state.durations[longBreak ? 'longBreak' : 'shortBreak'] * 60,
+          pomodoroCount: longBreak ? 0 : newCount,
+          uiState: 'state-idle', // mettre idle pour que l'utilisateur doive cliquer Start
+          progress: 0,
+          isRunning: false,
+          targetEpoch: null
         };
-      } else {
-  return { ...state, currentMode: 'pomodoro', timeRemaining: state.durations.pomodoro * 60, uiState: state.isRunning ? 'state-work' : 'state-idle', progress: 0 };
       }
+      return {
+        ...state,
+        currentMode: 'pomodoro',
+        timeRemaining: state.durations.pomodoro * 60,
+        uiState: state.isRunning ? 'state-work' : 'state-idle',
+        progress: 0,
+        targetEpoch: Date.now() + state.durations.pomodoro * 60 * 1000
+      };
     }
-  case 'START': return { ...state, isRunning: true, uiState: state.currentMode==='pomodoro' ? 'state-work' : 'state-break', targetEpoch: Date.now() + state.timeRemaining * 1000 };
+  case 'START': return { ...state, isRunning: true, uiState: state.currentMode==='pomodoro' ? 'state-work' : 'state-break', targetEpoch: Date.now() + state.timeRemaining * 1000 }; // timeRemaining déjà en secondes
     case 'PAUSE': return { ...state, isRunning: false, uiState: 'state-idle' };
   case 'RESET': return { ...state, isRunning: false, timeRemaining: state.durations[state.currentMode] * 60, uiState: 'state-idle', progress: 0, targetEpoch: null };
   case 'SWITCH_MODE': return { ...state, currentMode: action.mode, timeRemaining: state.durations[action.mode] * 60, isRunning: false, uiState: 'state-idle', progress: 0, targetEpoch: null };
@@ -51,33 +61,35 @@ function reducer(state, action) {
 
 export function usePomodoro() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const rafRef = useRef(null);
-  const lastSecondRef = useRef(state.timeRemaining);
+  const intervalRef = useRef(null);
+  const lastRemainingRef = useRef(state.timeRemaining);
 
   useEffect(()=> { localStorage.setItem('flow-timers', JSON.stringify(state.durations)); }, [state.durations]);
 
   useEffect(()=> {
-    if (!state.isRunning) { if (rafRef.current) cancelAnimationFrame(rafRef.current); return; }
-    let mounted = true;
-    const tickLoop = () => {
-      if (!mounted) return;
-      const now = Date.now();
-      const remainingMs = state.targetEpoch - now;
-      const newRemaining = Math.max(0, Math.ceil(remainingMs / 1000));
-      if (newRemaining !== lastSecondRef.current) {
-        lastSecondRef.current = newRemaining;
-        // accent derniers 3s
-        dispatch({ type: 'TICK' });
+    if (!state.isRunning || !state.targetEpoch) {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      return;
+    }
+    const sync = () => {
+      const remainingMs = state.targetEpoch - Date.now();
+      const newRemaining = Math.ceil(remainingMs / 1000);
+      if (newRemaining !== lastRemainingRef.current && newRemaining >= 0) {
+        lastRemainingRef.current = newRemaining;
+        dispatch({ type: 'SYNC_TIME', remaining: newRemaining });
       }
       if (remainingMs <= 0) {
-        // fin cycle déjà gérée par TICK suivant; laisser loop pour prochaine session
-      } else {
-        rafRef.current = requestAnimationFrame(tickLoop);
+        playNotificationSound(state.currentMode==='pomodoro');
+        dispatch({ type: 'COMPLETE_CYCLE' });
       }
     };
-    rafRef.current = requestAnimationFrame(tickLoop);
-    return () => { mounted = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [state.isRunning, state.targetEpoch]);
+    sync();
+    intervalRef.current = setInterval(sync, 1000);
+    // Re-sync immédiat quand l'onglet redevient visible
+    const visHandler = () => sync();
+    document.addEventListener('visibilitychange', visHandler);
+    return () => { clearInterval(intervalRef.current); intervalRef.current=null; document.removeEventListener('visibilitychange', visHandler); };
+  }, [state.isRunning, state.targetEpoch, state.currentMode]);
 
   useEffect(()=> {
     document.documentElement.style.setProperty('--counter-fill', state.uiState==='state-idle' ? (document.body.classList.contains('theme-night') ? '#e2e8f0' : '#0f172a') : '#e2e8f0');
@@ -88,7 +100,7 @@ export function usePomodoro() {
 
   useEffect(()=> { if (state.isRunning) { ensureAudio().then(()=> { playStartSound(state.currentMode==='pomodoro'); }); } }, [state.isRunning, state.currentMode]);
 
-  useEffect(()=> { if (state.timeRemaining === 0 && state.isRunning) { playNotificationSound(state.currentMode==='pomodoro'); } }, [state.timeRemaining, state.isRunning, state.currentMode]);
+  // Plus de listener séparé: la fin est gérée dans sync loop
 
   function start() { dispatch({ type: 'START' }); }
   function pause() { dispatch({ type: 'PAUSE' }); }
