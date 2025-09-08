@@ -1,4 +1,8 @@
-// Utility functions for advanced analytics & gamification
+// Utility functions for analytics & gamification
+// All functions are pure (no side-effects) and accept plain JS objects.
+// Expected shape:
+//   session: { started_at: ISOString, ended_at: ISOString, duration_seconds:number, mode:'pomodoro'|'break' }
+//   daily: { day:'YYYY-MM-DD', focus_seconds:number, pomodoro_count?:number }
 
 export function computeHourlyHistogram(sessions) {
   const hours = Array.from({length:24},()=>0);
@@ -10,23 +14,51 @@ export function computeHourlyHistogram(sessions) {
 }
 
 export function computeConsistency(daily, rangeDays) {
-  const activeDays = daily.filter(d=>d.focus_seconds>0).length;
-  return Math.round((activeDays / rangeDays) * 100) || 0;
+  if (!rangeDays || rangeDays <=0) return 0;
+  // Build a map day -> focus_seconds for quick lookup
+  const map = new Map();
+  (daily||[]).forEach(d=>{ if (d && d.day) map.set(d.day, d.focus_seconds||0); });
+  let active=0;
+  for (let i=0;i<rangeDays;i++) {
+    const key = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+    if ((map.get(key)||0) > 0) active++;
+  }
+  return Math.round((active / rangeDays)*100) || 0;
 }
 
 export function computeLongestStreak(daily) {
-  const set = new Set(daily.filter(d=>d.focus_seconds>0).map(d=>d.day));
-  let longest=0,current=0,day=0;
-  while(true){
-    const date = new Date();
-    date.setDate(date.getDate()-day);
-    const key = date.toISOString().slice(0,10);
-    if (set.has(key)) { current++; } else { longest = Math.max(longest,current); current=0; }
-    if (day>400) break; // safety
-    day++;
-    if (day> set.size + 50) break;
+  const days = [...new Set((daily||[]).filter(d=>d.focus_seconds>0).map(d=>d.day))].sort();
+  if (!days.length) return 0;
+  let longest=1, current=1;
+  for (let i=1;i<days.length;i++) {
+    const prev = days[i-1];
+    const cur = days[i];
+    if (isConsecutive(prev, cur)) {
+      current++;
+    } else {
+      if (current>longest) longest=current;
+      current=1;
+    }
   }
-  return Math.max(longest,current);
+  return Math.max(longest, current);
+}
+
+export function computeStreak(daily) {
+  // Current streak ending today.
+  const positiveSet = new Set((daily||[]).filter(d=>d.focus_seconds>0).map(d=>d.day));
+  let streak = 0;
+  for (let i=0; ; i++) {
+    const key = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+    if (positiveSet.has(key)) streak++; else break;
+  }
+  return streak;
+}
+
+function isConsecutive(a, b) {
+  // a,b strings YYYY-MM-DD
+  const da = new Date(a+"T00:00:00Z");
+  const db = new Date(b+"T00:00:00Z");
+  return (db - da) === 86400000; // exactly one day diff
 }
 
 export function computeLevel(totalFocusMinutes) {
@@ -61,7 +93,8 @@ export function buildMonthMatrix(sessions, year, month) {
   const targetYear = year ?? now.getFullYear();
   const targetMonth = month ?? now.getMonth();
   const first = new Date(targetYear, targetMonth, 1);
-  const daysInMonth = new Date(year, month+1, 0).getDate();
+  // FIX: previous version used the raw params (possibly undefined) leading to Invalid Date.
+  const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
   const map = {};
   sessions.filter(s=>s.mode==='pomodoro').forEach(s=>{
     const d = new Date(s.started_at);
@@ -79,4 +112,15 @@ export function buildMonthMatrix(sessions, year, month) {
   if (week.length) { while(week.length<7) week.push(null); weeks.push(week); }
   const labelDate = new Date(targetYear, targetMonth, 1);
   return { weeks, monthLabel: labelDate.toLocaleString(undefined,{ month:'long', year:'numeric'}), totalSeconds: Object.values(map).reduce((a,b)=>a+b,0), year: targetYear, month: targetMonth };
+}
+
+// Aggregate quick stats from session list
+export function aggregateSessionStats(sessions) {
+  const focusSessions = (sessions||[]).filter(s=>s.mode==='pomodoro');
+  const totalFocusSeconds = focusSessions.reduce((a,s)=>a+(s.duration_seconds||0),0);
+  const totalSessions = focusSessions.length;
+  const avgPomodoroMinutes = totalSessions ? Math.round(totalFocusSeconds / totalSessions / 60) : 0;
+  const totalSecondsAll = (sessions||[]).reduce((a,s)=>a+(s.duration_seconds||0),0) || 1; // avoid 0
+  const focusRatio = Math.round((totalFocusSeconds / totalSecondsAll) * 100) || 0;
+  return { totalFocusSeconds, totalSessions, avgPomodoroMinutes, focusRatio };
 }

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './useAuth.js';
 import { useTheme } from './useTheme.js';
 import { fetchRecentStats } from './sessionStore.js';
-import { computeConsistency, computeLongestStreak, computeLevel, buildMonthMatrix } from './statsUtils.js';
+import { computeConsistency, computeLongestStreak, computeLevel, buildMonthMatrix, computeStreak } from './statsUtils.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import { supabase } from './supabaseClient.js';
 import { getUserPreferences, upsertUserPreferences } from './userPrefs.js';
@@ -111,42 +111,48 @@ export function DashboardPage() {
     <div className={`min-h-screen flex flex-col ${isDark?'theme-night':'theme-day'} transition-colors`}> 
       <Header nav={nav} toggleTheme={toggleTheme} isDark={isDark} />
       <main className="flex-1 px-5 sm:px-10 pb-20 max-w-7xl w-full mx-auto">
-  <section className="mt-4 flex flex-wrap gap-4 items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
-            <span>Dashboard</span>
-            <span className="text-xs px-2 py-1 rounded-full bg-white/10 backdrop-blur-sm">Beta+</span>
-          </h1>
+        <section className="mt-4 flex flex-wrap gap-4 items-center justify-between dashboard-topbar">
           <div className="flex items-center gap-3">
-            <div className="flex gap-2 bg-white/10 dark:bg-white/5 rounded-full p-1">
+            <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 drop-shadow-sm">Dashboard</span>
+              <span aria-label="Version Beta" title="Version Beta" className="beta-badge">Beta+</span>
+            </h1>
+            <div className="hidden md:flex gap-2 bg-white/10 dark:bg-white/5 rounded-full p-1 switch-range" role="radiogroup" aria-label="Plage statistiques">
               {[7,14,30].map(d => (
-                <button key={d} onClick={()=>setRange(d)} className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${range===d? 'bg-gradient-to-r from-pink-500 to-indigo-500 text-white shadow':'opacity-60 hover:opacity-100'}`}>{d}d</button>
+                <button key={d} role="radio" aria-checked={range===d} onClick={()=>setRange(d)} className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all ${range===d? 'active-range':'inactive-range'}`}>{d}j</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="md:hidden flex gap-1" aria-hidden="true">
+              {[7,14,30].map(d => (
+                <button key={d} onClick={()=>setRange(d)} className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${range===d? 'active-range-sm':'inactive-range-sm'}`}>{d}</button>
               ))}
             </div>
             <button className="share-btn hidden sm:inline-flex" title="Share your progress (coming soon)">Share</button>
+            <button onClick={()=>setShowAdvanced(s=>!s)} className="text-[10px] px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors uppercase tracking-wide">{showAdvanced? 'Réduire':'Tout afficher'}</button>
           </div>
         </section>
 
-        {/* GRID PRINCIPALE */}
-        <div className="mt-8 grid gap-7 lg:grid-cols-12 auto-rows-min">
+        {/* GRID PRINCIPALE NOUVELLE STRUCTURE */}
+        <div className="mt-10 grid gap-7 xl:grid-cols-12 auto-rows-min dashboard-grid">
           <TodayFocusPanel loading={loading} todayFocusMin={todayFocusMin} todayPomodoros={todayPomodoros} goal={DAILY_GOAL_MIN} goalProgress={goalProgress} avgPomodoroLength={avgPomodoroLength} onGoalChange={async (val)=>{ setSavingGoal(true); await upsertUserPreferences(user,{ daily_focus_goal_min: val}); await loadPrefs(); setSavingGoal(false); }} savingGoal={savingGoal} />
           <StreaksPanel loading={loading || lifetime.loading} current={streak} longest={longestStreak} consistency={consistency} range={range} goalAchieved={goalProgress>=1} />
+          <InsightsPanel loading={loading} focusRatio={focusRatio} avgPomodoroLength={avgPomodoroLength} compareRange={compareRange} levelInfo={levelInfo} />
           {showAdvanced && <MonthCalendar matrix={monthMatrix} loading={loading} onPrev={()=>setMonthOffset(o=>o-1)} onNext={()=>setMonthOffset(o=>o+1)} offset={monthOffset} />}
-
-          <section className="panel relative rounded-2xl p-5 lg:col-span-8 order-4">
+          <section className="panel relative rounded-2xl p-5 xl:col-span-8 order-5 enhanced-panel" aria-labelledby="timelineHeading">
             <div className="mini-grid-bg" />
+            <h2 id="timelineHeading" className="sr-only">Timeline focus</h2>
             <ChartsSection loading={loading} daily={safe.daily} range={range} compare={compareRange} />
           </section>
-          {showAdvanced && <section className="panel relative rounded-2xl p-5 lg:col-span-4 order-5">
+          {showAdvanced && <section className="panel relative rounded-2xl p-5 xl:col-span-4 order-6 enhanced-panel" aria-labelledby="lifetimeHeading">
             <div className="mini-grid-bg" />
+            <h2 id="lifetimeHeading" className="sr-only">Progression & bilan global</h2>
             <LevelProgress info={levelInfo} />
             <div className="separator-line" />
             <LifetimePanel lifetime={lifetime} />
           </section>}
-          {showAdvanced && <section className="lg:col-span-12 order-6"><RecentSessions loading={loading} sessions={safe.sessions} /></section>}
-        </div>
-
-        <div className="mt-8 text-right">
-          <button onClick={()=>setShowAdvanced(s=>!s)} className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors">{showAdvanced? 'Hide some modules' : 'Show all modules'}</button>
+          {showAdvanced && <section className="xl:col-span-12 order-7"><RecentSessions loading={loading} sessions={safe.sessions} /></section>}
         </div>
       </main>
       <footer className="text-center py-6 text-xs opacity-50">Crafted for deep focus · {user?.email}</footer>
@@ -245,6 +251,46 @@ function StreaksPanel({ loading, current, longest, consistency, range, goalAchie
         </div>
       </div>
   <p className="text-[11px] leading-snug opacity-60">Keep your streak by hitting the daily goal. Consistency beats intensity.</p>
+    </section>
+  );
+}
+
+// Nouveau panneau Overview combinant Today + Streak + meta stats
+// Nouveau panneau d'insights isolé
+function InsightsPanel({ loading, focusRatio, avgPomodoroLength, compareRange, levelInfo }) {
+  const deltaLabel = compareRange?.deltaMinutes>=0 ? '+'+compareRange.deltaMinutes : compareRange.deltaMinutes;
+  const deltaPct = compareRange?.percent>=0 ? '+'+compareRange.percent : compareRange.percent;
+  return (
+    <section className="panel relative rounded-2xl p-5 xl:col-span-4 order-3 insights-panel" aria-label="Insights">
+      <div className="mini-grid-bg" />
+      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-4">Insights</h2>
+      <div className="simple-chip-grid">
+        <div className="simple-chip">
+          <span className="lbl">Focus Ratio</span>
+          <span className="val">{loading? '…': focusRatio+'%'}<span className="sub">deep</span></span>
+        </div>
+        <div className="simple-chip">
+          <span className="lbl">Avg Length</span>
+          <span className="val">{loading? '…': avgPomodoroLength+'m'}<span className="sub">pomodoro</span></span>
+        </div>
+        <div className={`simple-chip ${compareRange.deltaMinutes>=0? 'pos':'neg'}`}> 
+          <span className="lbl">Weekly Δ</span>
+          <span className="val">{loading? '…': deltaLabel+'m'}<span className={`sub ${compareRange.percent>=0? 'pos':'neg'}`}>{deltaPct}%</span></span>
+        </div>
+        <div className="simple-chip level">
+          <span className="lbl">Level</span>
+          <span className="val">{levelInfo?.level||0}<span className="sub">{Math.round((levelInfo?.progress||0)*100)}%</span></span>
+        </div>
+      </div>
+      {levelInfo && (
+        <div className="mt-6">
+          <div className="flex justify-between text-[10px] font-medium opacity-70 mb-2"><span>Level {levelInfo.level}</span><span>{Math.round(levelInfo.progress*100)}%</span></div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden level-mini-track">
+            <div className="h-full level-mini-fill" style={{ width: `${Math.min(100, levelInfo.progress*100)}%`}} />
+          </div>
+          <div className="text-[10px] opacity-50 mt-2">Next in {levelInfo.needed - levelInfo.current} min</div>
+        </div>
+      )}
     </section>
   );
 }
@@ -400,10 +446,6 @@ function SkeletonRows() {
 
 function buildLast(n) {
   const arr = []; for(let i=n-1;i>=0;i--){ arr.push(new Date(Date.now()-i*24*3600*1000).toISOString().slice(0,10)); } return arr;
-}
-function computeStreak(daily) {
-  const map = new Set(daily.filter(r=>r.focus_seconds>0).map(r=>r.day));
-  let streak=0; for(let i=0;;i++){ const d=new Date(Date.now()-i*24*3600*1000).toISOString().slice(0,10); if(map.has(d)) streak++; else break; } return streak;
 }
 function averageLength(pomos) { if(!pomos.length) return 0; return Math.round(pomos.reduce((a,s)=>a+s.duration_seconds,0)/(pomos.length*60)); }
 function buildFocusRatio(all){ if(!all.length) return 0; const focus=all.filter(s=>s.mode==='pomodoro').reduce((a,s)=>a+s.duration_seconds,0); const total=all.reduce((a,s)=>a+s.duration_seconds,0); return Math.round((focus/total)*100)||0; }
