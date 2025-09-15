@@ -89,3 +89,6 @@ coverage/
 
 # TernJS port file
 .tern-port
+
+#ignore sound folder
+*brown+rain-sound.mp3
