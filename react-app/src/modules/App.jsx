@@ -3,6 +3,7 @@ import { TimerDisplay } from './TimerDisplay.jsx';
 import { ModeSelector } from './ModeSelector.jsx';
 import { Intention } from './Intention.jsx';
 import { ThemeToggle } from './ThemeToggle.jsx';
+import SoundControl from './SoundControl.jsx';
 import { useTheme } from './useTheme.js';
 import { usePomodoro } from './usePomodoro.js';
 import { logSession, fetchRecentStats } from './sessionStore.js';
@@ -69,7 +70,10 @@ export default function App() {
       </button>
       <div className="glass-container w-full max-w-lg mx-auto rounded-3xl shadow-2xl p-6 sm:p-10 text-center relative">
         {showSettings && (
-          <InlineSettings durations={state.durations} onChange={(d)=>{ updateDurations(d); }} />
+          <>
+            <SoundControl />
+            <InlineSettings durations={state.durations} onChange={(d)=>{ updateDurations(d); }} />
+          </>
         )}
         <ModeSelector currentMode={state.currentMode} switchMode={switchMode} />
         <div className="relative mb-6">
