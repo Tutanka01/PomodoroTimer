@@ -112,53 +112,48 @@ export default function SoundControl() {
   }
 
   return (
-    <div className="inline-settings mb-1 text-left">
-      <div className="inline-settings-inner p-4 rounded-xl relative overflow-hidden">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-xs uppercase tracking-wide opacity-70">Ambiance</h4>
-          <button
-            onClick={togglePlay}
-            disabled={loading}
-            className={`text-[10px] px-3 py-1 rounded-full transition-colors ${loading ? 'bg-white/20 dark:bg-white/10 opacity-60 cursor-wait' : (isPlaying ? 'bg-emerald-500/80 text-white' : 'bg-white/20 dark:bg-white/10 hover:bg-white/25')}`}
-            title={loading ? 'Loading…' : (isPlaying ? 'Stop' : 'Play')}
-          >
-            {loading ? '…' : (isPlaying ? 'Stop' : 'Play')}
-          </button>
-        </div>
-
-        {tracks.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {tracks.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
-                className={`text-[10px] px-2 py-1 rounded-md transition-colors ${selectedId === t.id ? 'bg-gradient-to-br from-pink-500 to-indigo-500 text-white shadow' : 'bg-white/20 dark:bg-white/10 hover:bg-white/25'}`}
-                title={t.name}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {tracks.length === 1 && (
-          <div className="text-[10px] opacity-60 mb-3">{tracks[0].name}</div>
-        )}
-
-        <div className="w-full pt-1">
-          <input
-            type="range"
-            min="0"
-            max="1000"
-            step="1"
-            value={sliderVal}
-            onChange={onSlider}
-            aria-label="Ambient volume"
-            className="w-full accent-pink-500/80 cursor-pointer opacity-90 hover:opacity-100"
-          />
-          {/* No numbers shown; ultra-fine control via 1000 steps with a perceptual curve */}
-        </div>
+    <div className="card">
+      <div className="card-head">
+        <h4 className="card-title">Ambience</h4>
+        <button
+          onClick={togglePlay}
+          disabled={loading}
+          className={`chip${isPlaying ? ' is-active' : ''}`}
+          title={loading ? 'Loading…' : (isPlaying ? 'Stop' : 'Play')}
+        >
+          {loading ? '…' : (isPlaying ? 'Stop' : 'Play')}
+        </button>
       </div>
+
+      {tracks.length > 1 && (
+        <div className="chip-row mb-3">
+          {tracks.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSelectedId(t.id)}
+              className={`chip${selectedId === t.id ? ' is-active' : ''}`}
+              title={t.name}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tracks.length === 1 && (
+        <div className="field-label mb-3">{tracks[0].name}</div>
+      )}
+
+      <input
+        type="range"
+        min="0"
+        max="1000"
+        step="1"
+        value={sliderVal}
+        onChange={onSlider}
+        aria-label="Ambient volume"
+        className="vol"
+      />
     </div>
   );
 }

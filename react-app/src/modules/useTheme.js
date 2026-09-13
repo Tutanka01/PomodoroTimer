@@ -5,7 +5,7 @@ export function useTheme() {
   useEffect(()=> {
     localStorage.setItem(KEY, theme);
     const meta = document.getElementById('theme-color-meta');
-    if (meta) meta.content = theme==='dark' ? '#000000' : '#f1f5f9';
+    if (meta) meta.content = theme==='dark' ? '#16130f' : '#faf8f4';
     document.documentElement.style.colorScheme = theme==='dark' ? 'dark' : 'light';
     document.body.classList.remove('theme-day','theme-night');
     document.body.classList.add(theme==='dark' ? 'theme-night' : 'theme-day');

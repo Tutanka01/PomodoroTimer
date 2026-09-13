@@ -114,6 +114,15 @@ export function buildMonthMatrix(sessions, year, month) {
   return { weeks, monthLabel: labelDate.toLocaleString(undefined,{ month:'long', year:'numeric'}), totalSeconds: Object.values(map).reduce((a,b)=>a+b,0), year: targetYear, month: targetMonth };
 }
 
+export function buildMonthMatrixFromDaily(daily, year, month) {
+  const sessions = (daily || []).map(entry => ({
+    started_at: `${entry.day}T12:00:00Z`,
+    mode: 'pomodoro',
+    duration_seconds: entry.focus_seconds || 0,
+  }));
+  return buildMonthMatrix(sessions, year, month);
+}
+
 // Aggregate quick stats from session list
 export function aggregateSessionStats(sessions) {
   const focusSessions = (sessions||[]).filter(s=>s.mode==='pomodoro');
