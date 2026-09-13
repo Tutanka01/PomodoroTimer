@@ -1,17 +1,23 @@
-import { supabase } from './supabaseClient.js';
+import { api } from './api.js';
 
+const DEFAULT_PREFS = { daily_focus_goal_min: 120 };
+
+// Le paramètre user est toléré pour compatibilité mais ignoré.
 export async function getUserPreferences(user) {
-  if (!user) return { daily_focus_goal_min: 120 };
-  const { data, error } = await supabase.from('user_preferences').select('*').eq('user_id', user.id).single();
-  if (error && error.code !== 'PGRST116') { // not found vs real error
-    console.error('getUserPreferences error', error);
+  try {
+    const data = await api('/api/prefs');
+    if (!data || typeof data.daily_focus_goal_min !== 'number') return { ...DEFAULT_PREFS };
+    return data;
+  } catch (e) {
+    console.error('getUserPreferences error', e);
+    return { ...DEFAULT_PREFS };
   }
-  if (!data) return { daily_focus_goal_min: 120 };
-  return data;
 }
 
 export async function upsertUserPreferences(user, { daily_focus_goal_min }) {
-  if (!user) return;
-  const { error } = await supabase.from('user_preferences').upsert({ user_id: user.id, daily_focus_goal_min });
-  if (error) console.error('upsertUserPreferences error', error);
+  try {
+    await api('/api/prefs', { method: 'PUT', body: { daily_focus_goal_min } });
+  } catch (e) {
+    console.error('upsertUserPreferences error', e);
+  }
 }

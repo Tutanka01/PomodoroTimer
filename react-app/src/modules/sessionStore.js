@@ -1,29 +1,79 @@
-import { supabase } from './supabaseClient.js';
+import { api } from './api.js';
 
-// Logs a finished session (pomodoro or break) if user authenticated
-export async function logSession({ user, startedAt, endedAt, mode, intention, rating }) {
-  if (!user) return;
+const OUTBOX_KEY = 'flow-outbox';
+
+function readOutbox() {
   try {
-    const { error } = await supabase
-      .from('focus_sessions')
-  .insert({ user_id: user.id, started_at: startedAt, ended_at: endedAt, mode, intention, productivity_rating: rating || null });
-    if (error) console.error('logSession error', error);
-  } catch(e){ console.error(e); }
+    const list = JSON.parse(localStorage.getItem(OUTBOX_KEY));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
 }
 
-export async function fetchRecentStats(user, { days = 7 } = {}) {
-  if (!user) return { sessions: [], daily: [] };
-  const since = new Date(Date.now() - days*24*3600*1000).toISOString();
-  const { data: sessions, error } = await supabase
-    .from('focus_sessions')
-    .select('*')
-    .gte('started_at', since)
-    .order('started_at', { ascending: false })
-    .limit(100);
-  if (error) { console.error(error); return { sessions: [], daily: [] }; }
-  const { data: daily } = await supabase
-    .from('user_daily_focus')
-    .select('*')
-    .gte('day', (new Date(Date.now() - days*24*3600*1000)).toISOString().slice(0,10));
-  return { sessions: sessions || [], daily: daily || [] };
+function writeOutbox(list) {
+  try {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(list.slice(-50)));
+  } catch {
+    // quota indisponible : on n'insiste pas
+  }
+}
+
+async function postSession(payload) {
+  const data = await api('/api/sessions', { method: 'POST', body: payload });
+  return data?.session || null;
+}
+
+// Enregistre une session terminée. En cas d'échec réseau/serveur, la session est
+// conservée localement et renvoyée automatiquement (voir flushOutbox).
+export async function logSession({ startedAt, endedAt, mode, intention, interrupted = false }) {
+  const payload = { startedAt, endedAt, mode, intention, interrupted };
+  try {
+    return await postSession(payload);
+  } catch (e) {
+    console.error('logSession error — session mise en attente', e);
+    writeOutbox([...readOutbox(), payload]);
+    return null;
+  }
+}
+
+export function pendingSessionCount() {
+  return readOutbox().length;
+}
+
+// Renvoie les sessions en attente. Retourne le nombre restant.
+export async function flushOutbox() {
+  const list = readOutbox();
+  if (!list.length) return 0;
+  const remaining = [];
+  for (const payload of list) {
+    try {
+      await postSession(payload);
+    } catch {
+      remaining.push(payload);
+    }
+  }
+  writeOutbox(remaining);
+  return remaining.length;
+}
+
+export async function updateSessionRating(id, rating) {
+  try {
+    const data = await api(`/api/sessions/${id}`, { method: 'PATCH', body: { rating: rating ?? null } });
+    return data?.session || null;
+  } catch (e) {
+    console.error('updateSessionRating error', e);
+    return null;
+  }
+}
+
+// Le paramètre user est conservé pour compatibilité mais ignoré.
+// L'erreur remonte volontairement : le dashboard affiche sa bannière « Recharger ».
+export async function fetchRecentStats(user, { days = 7, includeAllDaily = false, limitSessions = 200 } = {}) {
+  const params = new URLSearchParams();
+  if (typeof days === 'number' && days > 0) params.set('days', String(days));
+  if (includeAllDaily) params.set('allDaily', '1');
+  if (limitSessions) params.set('limitSessions', String(limitSessions));
+  const query = params.toString();
+  return api(`/api/stats${query ? `?${query}` : ''}`);
 }

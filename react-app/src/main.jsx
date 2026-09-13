@@ -7,14 +7,15 @@ import { LoginPage } from './modules/Login.jsx';
 import { DashboardPage } from './modules/Dashboard.jsx';
 import { useTheme } from './modules/useTheme.js';
 
+// Une seule instance de thème pour tout le routeur, transmise aux pages (pas de désynchronisation).
 function RootRouter(){
 	const { isDark, toggleTheme } = useTheme();
 	const nav = useNavigate();
 	return (
 		<Routes>
-			<Route path="/" element={<App />} />
+			<Route path="/" element={<App isDark={isDark} toggleTheme={toggleTheme} />} />
 			<Route path="/login" element={<LoginPage isDark={isDark} toggleTheme={toggleTheme} redirectHome={()=>nav('/')} />} />
-			<Route path="/dashboard" element={<DashboardPage />} />
+			<Route path="/dashboard" element={<DashboardPage isDark={isDark} toggleTheme={toggleTheme} />} />
 		</Routes>
 	);
 }

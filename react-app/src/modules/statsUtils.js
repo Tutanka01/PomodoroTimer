@@ -1,32 +1,54 @@
-// Utility functions for advanced analytics & gamification
-
-export function computeHourlyHistogram(sessions) {
-  const hours = Array.from({length:24},()=>0);
-  sessions.filter(s=>s.mode==='pomodoro').forEach(s=>{
-    const d = new Date(s.started_at);
-    hours[d.getHours()] += s.duration_seconds || 0;
-  });
-  return hours; // seconds per hour
-}
+// Utilitaires d'analyse & gamification, fonctions pures (aucun effet de bord).
+// Formes attendues :
+//   session: { started_at: ISOString, ended_at: ISOString, duration_seconds: number, mode: 'pomodoro'|'break' }
+//   daily: { day: 'YYYY-MM-DD', focus_seconds: number, pomodoro_count?: number }
 
 export function computeConsistency(daily, rangeDays) {
-  const activeDays = daily.filter(d=>d.focus_seconds>0).length;
-  return Math.round((activeDays / rangeDays) * 100) || 0;
+  if (!rangeDays || rangeDays <=0) return 0;
+  // Build a map day -> focus_seconds for quick lookup
+  const map = new Map();
+  (daily||[]).forEach(d=>{ if (d && d.day) map.set(d.day, d.focus_seconds||0); });
+  let active=0;
+  for (let i=0;i<rangeDays;i++) {
+    const key = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+    if ((map.get(key)||0) > 0) active++;
+  }
+  return Math.round((active / rangeDays)*100) || 0;
 }
 
 export function computeLongestStreak(daily) {
-  const set = new Set(daily.filter(d=>d.focus_seconds>0).map(d=>d.day));
-  let longest=0,current=0,day=0;
-  while(true){
-    const date = new Date();
-    date.setDate(date.getDate()-day);
-    const key = date.toISOString().slice(0,10);
-    if (set.has(key)) { current++; } else { longest = Math.max(longest,current); current=0; }
-    if (day>400) break; // safety
-    day++;
-    if (day> set.size + 50) break;
+  const days = [...new Set((daily||[]).filter(d=>d.focus_seconds>0).map(d=>d.day))].sort();
+  if (!days.length) return 0;
+  let longest=1, current=1;
+  for (let i=1;i<days.length;i++) {
+    const prev = days[i-1];
+    const cur = days[i];
+    if (isConsecutive(prev, cur)) {
+      current++;
+    } else {
+      if (current>longest) longest=current;
+      current=1;
+    }
   }
-  return Math.max(longest,current);
+  return Math.max(longest, current);
+}
+
+export function computeStreak(daily) {
+  // Current streak ending today.
+  const positiveSet = new Set((daily||[]).filter(d=>d.focus_seconds>0).map(d=>d.day));
+  let streak = 0;
+  for (let i=0; ; i++) {
+    const key = new Date(Date.now() - i*86400000).toISOString().slice(0,10);
+    if (positiveSet.has(key)) streak++; else break;
+  }
+  return streak;
+}
+
+function isConsecutive(a, b) {
+  // a,b strings YYYY-MM-DD
+  const da = new Date(a+"T00:00:00Z");
+  const db = new Date(b+"T00:00:00Z");
+  return (db - da) === 86400000; // exactly one day diff
 }
 
 export function computeLevel(totalFocusMinutes) {
@@ -44,24 +66,13 @@ export function computeLevel(totalFocusMinutes) {
   }
 }
 
-export function deriveBadges({ totalFocusMin, streak, longestStreak, pomodoroCount }) {
-  const badges = [];
-  if (totalFocusMin >= 100) badges.push({ id:'100min', label:'100m Focus' });
-  if (totalFocusMin >= 1000) badges.push({ id:'1000min', label:'1000m Focus' });
-  if (streak >= 3) badges.push({ id:'streak3', label:'3 Day Streak' });
-  if (streak >= 7) badges.push({ id:'streak7', label:'7 Day Streak' });
-  if (longestStreak >= 14) badges.push({ id:'streak14', label:'14 Day Streak' });
-  if (pomodoroCount >= 50) badges.push({ id:'50pomo', label:'50 Pomodoros' });
-  if (pomodoroCount >= 200) badges.push({ id:'200pomo', label:'200 Pomodoros' });
-  return badges;
-}
-
 export function buildMonthMatrix(sessions, year, month) {
   const now = new Date();
   const targetYear = year ?? now.getFullYear();
   const targetMonth = month ?? now.getMonth();
   const first = new Date(targetYear, targetMonth, 1);
-  const daysInMonth = new Date(year, month+1, 0).getDate();
+  // FIX: previous version used the raw params (possibly undefined) leading to Invalid Date.
+  const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
   const map = {};
   sessions.filter(s=>s.mode==='pomodoro').forEach(s=>{
     const d = new Date(s.started_at);
@@ -79,4 +90,13 @@ export function buildMonthMatrix(sessions, year, month) {
   if (week.length) { while(week.length<7) week.push(null); weeks.push(week); }
   const labelDate = new Date(targetYear, targetMonth, 1);
   return { weeks, monthLabel: labelDate.toLocaleString(undefined,{ month:'long', year:'numeric'}), totalSeconds: Object.values(map).reduce((a,b)=>a+b,0), year: targetYear, month: targetMonth };
+}
+
+export function buildMonthMatrixFromDaily(daily, year, month) {
+  const sessions = (daily || []).map(entry => ({
+    started_at: `${entry.day}T12:00:00Z`,
+    mode: 'pomodoro',
+    duration_seconds: entry.focus_seconds || 0,
+  }));
+  return buildMonthMatrix(sessions, year, month);
 }

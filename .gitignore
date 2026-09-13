@@ -43,6 +43,9 @@ pids
 *.seed
 *.pid.lock
 
+# Base SQLite locale (serveur node server/index.js)
+/data/
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov

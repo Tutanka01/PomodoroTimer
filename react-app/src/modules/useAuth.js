@@ -1,46 +1,61 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from './supabaseClient.js';
+import { api, ApiError, errorText } from './api.js';
 
 export function useAuth() {
-  const [session, setSession] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let ignore = false;
-    supabase.auth.getSession().then(({ data }) => { if(!ignore){ setSession(data.session); setLoading(false);} });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => { setSession(newSession); });
-    return () => { ignore = true; listener.subscription.unsubscribe(); };
+    api('/api/auth/me')
+      .then((data) => { if (!ignore) setUser(data?.user || null); })
+      .catch((e) => {
+        if (ignore) return;
+        if (!(e instanceof ApiError && e.status === 401)) setError(errorText(e));
+      })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
   }, []);
 
   const signIn = useCallback(async (email, password) => {
     setError(null); setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
-    setSession(data?.session || null);
-    setLoading(false);
-    return { data, error };
+    try {
+      const data = await api('/api/auth/login', { method: 'POST', body: { email, password } });
+      setUser(data?.user || null);
+      return { data };
+    } catch (e) {
+      const text = errorText(e);
+      setError(text);
+      return { error: text };
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const signUp = useCallback(async (email, password) => {
     setError(null); setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) setError(error.message);
-    setSession(data?.session || null);
-    setLoading(false);
-    return { data, error };
+    try {
+      const data = await api('/api/auth/signup', { method: 'POST', body: { email, password } });
+      setUser(data?.user || null);
+      return { data };
+    } catch (e) {
+      const text = errorText(e);
+      setError(text);
+      return { error: text };
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const signOut = useCallback(async () => { await supabase.auth.signOut(); setSession(null); }, []);
-
-  const signInWithGoogle = useCallback(async () => {
-    setError(null); setLoading(true);
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
-    if (error) setError(error.message);
-    // session will be set by listener after redirect
-    setLoading(false);
-    return { data, error };
+  const signOut = useCallback(async () => {
+    try {
+      await api('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+      console.error('signOut error', e);
+    }
+    setUser(null);
   }, []);
 
-  return { session, user: session?.user || null, loading, error, signIn, signUp, signOut, signInWithGoogle };
+  return { user, loading, error, signIn, signUp, signOut };
 }

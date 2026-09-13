@@ -1,0 +1,39 @@
+# Dépendances — l'image installe ses propres node_modules (Linux).
+# Sans cela, le node_modules macOS du host écrase celui du build.
+**/node_modules
+
+# Sorties de build
+**/dist
+**/build
+
+# Versionnage & méta
+.git
+.gitignore
+.dockerignore
+README.md
+
+# Env & secrets — jamais dans l'image
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Fichiers Docker (inutiles dans le contexte)
+Dockerfile
+docker-compose.yml
+
+# Données locales et secret de session
+data/
+.session-secret
+
+# Tests serveur (inutiles dans l'image de prod)
+server/test.js
+
+# Logs & divers
+*.log
+**/*.log
+.DS_Store
+**/.DS_Store
+._*
+.vscode
+.idea
