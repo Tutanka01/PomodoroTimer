@@ -17,7 +17,7 @@ before(async () => {
     port: 0,
     dbPath: path.join(tmpDir, 'test.db'),
     publicDir,
-    secret: 'secret-de-test-0123456789abcdef',
+    secret: 'secret-de-test-0123456789abcdef-long',
   });
   base = `http://127.0.0.1:${handle.port}`;
 });
@@ -305,4 +305,72 @@ test('login : 429 après 10 échecs depuis la même IP', async () => {
     assert.equal(r.status, 401);
   }
   assert.equal(tooMany, true);
+});
+
+test('rate limit : un succès sur un autre compte ne réarme pas la victime', async () => {
+  const signup = await api(
+    'POST',
+    '/api/auth/signup',
+    { email: 'attaquant@example.com', password: 'motdepasse123' },
+    { cookie: null },
+  );
+  assert.equal(signup.status, 201);
+
+  for (let i = 0; i < 10; i += 1) {
+    const r = await api(
+      'POST',
+      '/api/auth/login',
+      { email: 'victime@example.com', password: 'mauvais-mot-de-passe' },
+      { cookie: null },
+    );
+    assert.equal(r.status, 401);
+  }
+
+  const success = await api(
+    'POST',
+    '/api/auth/login',
+    { email: 'attaquant@example.com', password: 'motdepasse123' },
+    { cookie: null },
+  );
+  assert.equal(success.status, 200);
+
+  const blocked = await api(
+    'POST',
+    '/api/auth/login',
+    { email: 'victime@example.com', password: 'mauvais-mot-de-passe' },
+    { cookie: null },
+  );
+  assert.equal(blocked.status, 429);
+});
+
+test('signup : plafonné par IP après 10 comptes créés', async () => {
+  let tooMany = false;
+  for (let i = 0; i < 15; i += 1) {
+    const r = await api(
+      'POST',
+      '/api/auth/signup',
+      { email: `limite-${i}@example.com`, password: 'motdepasse123' },
+      { cookie: null },
+    );
+    if (r.status === 429) {
+      assert.equal(r.json.error, 'too_many_attempts');
+      tooMany = true;
+      break;
+    }
+    assert.equal(r.status, 201);
+  }
+  assert.equal(tooMany, true);
+});
+
+test('SESSION_SECRET trop court : refus de démarrer', async () => {
+  await assert.rejects(
+    () =>
+      startServer({
+        port: 0,
+        dbPath: path.join(tmpDir, 'secret-court.db'),
+        publicDir,
+        secret: 'trop-court',
+      }),
+    /trop court/,
+  );
 });

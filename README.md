@@ -58,8 +58,9 @@ docker compose start
 | `PORT` | `3000` | Port HTTP du serveur. |
 | `DB_PATH` | `./data/flow.db` | Fichier SQLite (dossier parent créé automatiquement). |
 | `PUBLIC_DIR` | `react-app/dist` | Dossier des fichiers statiques (build Vite). |
-| `SESSION_SECRET` | auto-généré | Secret HMAC des cookies ; s'il est absent, généré et conservé dans `data/.session-secret` (chmod 0600). |
+| `SESSION_SECRET` | auto-généré | Secret HMAC des cookies ; s'il est absent, généré et conservé dans `data/.session-secret` (chmod 0600). **32 caractères minimum** si fourni. |
 | `COOKIE_SECURE` | — | `1` derrière un reverse proxy HTTPS (cookie `Secure`). |
+| `TRUST_PROXY` | — | `1` derrière un reverse proxy : utilise `X-Forwarded-For` (dernière entrée, ajoutée par votre proxy) pour le rate limiting. |
 
 Voir `.env.example` pour un modèle commenté.
 
@@ -98,7 +99,8 @@ Le volume `flow-data` n'est pas touché ; les migrations de schéma sont appliqu
 
 - Mots de passe hachés avec `scrypt` (sel aléatoire, comparaison en temps constant).
 - Cookie de session signé HMAC-SHA256, `HttpOnly`, `SameSite=Lax`, expiration 30 jours.
-- Limitation des tentatives de connexion/inscription : 10 échecs par IP et par 15 minutes.
+- Limitation des tentatives de connexion par couple (IP, email) : 10 échecs / 15 min, plus un plafond global de 50 échecs par IP. Une connexion réussie ne réarme pas les compteurs des autres comptes. Création de comptes plafonnée à 10 par IP et par heure.
+- Hachage `scrypt` asynchrone (l'event loop n'est pas bloqué) ; réponse à coût constant pour les emails inconnus.
 - Validation stricte des entrées, corps JSON limité à 64 Ko, requêtes SQL paramétrées.
 - En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`.
 - Pas de dépendance npm côté serveur : surface d'attaque minimale.

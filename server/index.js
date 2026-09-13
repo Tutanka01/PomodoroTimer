@@ -15,8 +15,13 @@ const MAX_SESSION_SECONDS = 24 * 60 * 60; // 24 h
 const MAX_INTENTION_LENGTH = 200;
 const DEFAULT_DAILY_GOAL_MIN = 120;
 const MAX_DAILY_GOAL_MIN = 1440;
-const LOGIN_MAX_FAILURES = 10;
+const LOGIN_MAX_FAILURES = 10; // par couple (IP, email)
+const IP_MAX_FAILURES = 50; // par IP, jamais réarmé par un succès
+const MAX_SIGNUPS_PER_IP = 10; // par heure et par IP (comptes créés)
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const RATE_MAP_CAP = 2000; // plafond dur des compteurs en mémoire
+const MIN_SECRET_LENGTH = 32;
 const VALID_MODES = new Set(['pomodoro', 'shortBreak', 'longBreak']);
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
 
@@ -134,20 +139,33 @@ function prepareStatements(db) {
 // Mots de passe, cookies, sessions
 // ---------------------------------------------------------------------------
 
-function hashPassword(password) {
+const scryptAsync = (password, salt, keylen) =>
+  new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, keylen, (err, key) => (err ? reject(err) : resolve(key)));
+  });
+
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(password, salt, 32);
+  const hash = await scryptAsync(password, salt, 32);
   return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
 }
 
-function verifyPassword(password, stored) {
+async function verifyPassword(password, stored) {
   const parts = String(stored).split('$');
   if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
   const salt = Buffer.from(parts[1], 'base64');
   const expected = Buffer.from(parts[2], 'base64');
   if (salt.length === 0 || expected.length === 0) return false;
-  const actual = crypto.scryptSync(password, salt, expected.length);
+  const actual = await scryptAsync(password, salt, expected.length);
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+// Hash factice : garde un temps de réponse constant quand l'email est inconnu
+// (évite l'énumération de comptes par mesure de latence).
+let dummyHashPromise = null;
+function getDummyHash() {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword(crypto.randomBytes(16).toString('hex'));
+  return dummyHashPromise;
 }
 
 function signSession(uid, secret) {
@@ -202,7 +220,14 @@ function parseCookies(header) {
 }
 
 function resolveSecret(secret, dbPath) {
-  if (typeof secret === 'string' && secret.length > 0) return secret;
+  if (typeof secret === 'string' && secret.length > 0) {
+    if (secret.length < MIN_SECRET_LENGTH) {
+      throw new Error(
+        `SESSION_SECRET trop court : ${MIN_SECRET_LENGTH} caractères minimum (fourni : ${secret.length}).`,
+      );
+    }
+    return secret;
+  }
   const file = path.join(path.dirname(dbPath), '.session-secret');
   try {
     const existing = fs.readFileSync(file, 'utf8').trim();
@@ -237,36 +262,76 @@ function resolveSecret(secret, dbPath) {
 // Rate limiting (en mémoire, par IP réelle)
 // ---------------------------------------------------------------------------
 
-const loginAttempts = new Map();
+const loginAttempts = new Map(); // `${ip}\n${email}` -> { count, resetAt }
+const ipFailures = new Map(); // ip -> { count, resetAt } (un succès ne le réarme pas)
+const signupAttempts = new Map(); // ip -> { count, resetAt } (comptes créés)
 
 function clientIp(req) {
+  if (String(process.env.TRUST_PROXY || '') === '1') {
+    // Derrière un reverse proxy : la dernière entrée est celle ajoutée par le proxy.
+    const chain = String(req.headers['x-forwarded-for'] || '').split(',');
+    const last = chain[chain.length - 1]?.trim();
+    if (last) return last;
+  }
   return req.socket.remoteAddress || 'inconnu';
 }
 
-function loginBlocked(req) {
-  const entry = loginAttempts.get(clientIp(req));
-  if (!entry) return false;
+function getCounter(map, key, windowMs) {
+  const entry = map.get(key);
+  if (!entry) return null;
   if (Date.now() > entry.resetAt) {
-    loginAttempts.delete(clientIp(req));
-    return false;
+    map.delete(key);
+    return null;
   }
-  return entry.fails >= LOGIN_MAX_FAILURES;
+  return entry;
 }
 
-function recordLoginFailure(req) {
-  const key = clientIp(req);
-  const now = Date.now();
-  let entry = loginAttempts.get(key);
-  if (!entry || now > entry.resetAt) entry = { fails: 0, resetAt: now + LOGIN_WINDOW_MS };
-  entry.fails += 1;
-  loginAttempts.set(key, entry);
-  if (loginAttempts.size > 1000) {
-    for (const [ip, value] of loginAttempts) if (now > value.resetAt) loginAttempts.delete(ip);
+function bumpCounter(map, key, windowMs) {
+  let entry = getCounter(map, key, windowMs);
+  if (!entry) {
+    entry = { count: 0, resetAt: Date.now() + windowMs };
+    map.set(key, entry);
   }
+  entry.count += 1;
+  if (map.size > RATE_MAP_CAP) {
+    const target = Math.floor(RATE_MAP_CAP * 0.8);
+    for (const k of map.keys()) {
+      if (map.size <= target) break;
+      map.delete(k);
+    }
+  }
+  return entry;
 }
 
-function clearLoginFailures(req) {
-  loginAttempts.delete(clientIp(req));
+function accountKey(req, email) {
+  return `${clientIp(req)}\n${email}`;
+}
+
+function loginBlocked(req, email) {
+  const account = getCounter(loginAttempts, accountKey(req, email), LOGIN_WINDOW_MS);
+  if (account && account.count >= LOGIN_MAX_FAILURES) return true;
+  const ip = getCounter(ipFailures, clientIp(req), LOGIN_WINDOW_MS);
+  return !!(ip && ip.count >= IP_MAX_FAILURES);
+}
+
+function recordLoginFailure(req, email) {
+  bumpCounter(loginAttempts, accountKey(req, email), LOGIN_WINDOW_MS);
+  bumpCounter(ipFailures, clientIp(req), LOGIN_WINDOW_MS);
+}
+
+function clearLoginFailures(req, email) {
+  // Seul le couple (IP, email) est remis à zéro : réussir sur un autre compte
+  // ne doit pas rouvrir le compteur de la victime.
+  loginAttempts.delete(accountKey(req, email));
+}
+
+function signupBlocked(req) {
+  const entry = getCounter(signupAttempts, clientIp(req), SIGNUP_WINDOW_MS);
+  return !!(entry && entry.count >= MAX_SIGNUPS_PER_IP);
+}
+
+function recordSignup(req) {
+  bumpCounter(signupAttempts, clientIp(req), SIGNUP_WINDOW_MS);
 }
 
 // ---------------------------------------------------------------------------
@@ -405,10 +470,12 @@ function requireUser(req, res, ctx) {
 // ---------------------------------------------------------------------------
 
 async function handleSignup(req, res, ctx) {
-  if (loginBlocked(req)) return sendError(res, 429, 'too_many_attempts');
   const body = await readJson(req);
   const email = normalizeEmail(body.email);
   const password = body.password;
+  if (loginBlocked(req, email || '') || signupBlocked(req)) {
+    return sendError(res, 429, 'too_many_attempts');
+  }
   if (
     !isValidEmail(email) ||
     typeof password !== 'string' ||
@@ -418,12 +485,12 @@ async function handleSignup(req, res, ctx) {
     return sendError(res, 400, 'invalid_input');
   }
   if (ctx.stmts.userByEmail.get(email)) {
-    recordLoginFailure(req);
+    recordLoginFailure(req, email);
     return sendError(res, 409, 'email_taken');
   }
-  const info = ctx.stmts.insertUser.run(email, hashPassword(password));
+  const info = ctx.stmts.insertUser.run(email, await hashPassword(password));
   const user = { id: Number(info.lastInsertRowid), email };
-  clearLoginFailures(req);
+  recordSignup(req);
   res.setHeader(
     'Set-Cookie',
     sessionCookie(signSession(user.id, ctx.secret), SESSION_TTL_MS / 1000, ctx.cookieSecure),
@@ -432,10 +499,10 @@ async function handleSignup(req, res, ctx) {
 }
 
 async function handleLogin(req, res, ctx) {
-  if (loginBlocked(req)) return sendError(res, 429, 'too_many_attempts');
   const body = await readJson(req);
   const email = normalizeEmail(body.email);
   const password = body.password;
+  if (loginBlocked(req, email || '')) return sendError(res, 429, 'too_many_attempts');
   if (
     !isValidEmail(email) ||
     typeof password !== 'string' ||
@@ -445,11 +512,17 @@ async function handleLogin(req, res, ctx) {
     return sendError(res, 400, 'invalid_input');
   }
   const user = ctx.stmts.userByEmail.get(email);
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    recordLoginFailure(req);
+  if (!user) {
+    // Temps de réponse constant : même coût scrypt que pour un compte existant.
+    await verifyPassword(password, await getDummyHash());
+    recordLoginFailure(req, email);
     return sendError(res, 401, 'invalid_credentials');
   }
-  clearLoginFailures(req);
+  if (!(await verifyPassword(password, user.password_hash))) {
+    recordLoginFailure(req, email);
+    return sendError(res, 401, 'invalid_credentials');
+  }
+  clearLoginFailures(req, email);
   res.setHeader(
     'Set-Cookie',
     sessionCookie(signSession(user.id, ctx.secret), SESSION_TTL_MS / 1000, ctx.cookieSecure),

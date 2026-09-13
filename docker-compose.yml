@@ -10,11 +10,13 @@ services:
       - flow-data:/data
     environment:
       NODE_ENV: production
-      # Secret de signature des cookies. Si absent, un secret est généré et
-      # conservé dans le volume (fichier /data/.session-secret).
+      # Secret de signature des cookies (32 caractères minimum). Si absent, un secret
+      # est généré et conservé dans le volume (fichier /data/.session-secret).
       # SESSION_SECRET: changez-moi-par-une-longue-chaine-aleatoire
       # Décommentez derrière un reverse proxy HTTPS :
       # COOKIE_SECURE: "1"
+      # Décommentez derrière un reverse proxy pour un rate limiting par vraie IP :
+      # TRUST_PROXY: "1"
 
 volumes:
   flow-data:
