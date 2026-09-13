@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { setTrack, play as audioPlay, pause as audioPause, setVolumeLinear, getIsPlaying, getCurrentUrl } from './ambientAudio.js';
+import { t } from './i18n.js';
 
 // Discover all audio files in /react-app/sound automatically (mp3/ogg/wav)
 // Vite will transform imported assets into URLs.
@@ -114,27 +115,27 @@ export default function SoundControl() {
   return (
     <div className="card">
       <div className="card-head">
-        <h4 className="card-title">Ambience</h4>
+        <h4 className="card-title">{t('ambience')}</h4>
         <button
           onClick={togglePlay}
           disabled={loading}
           className={`chip${isPlaying ? ' is-active' : ''}`}
-          title={loading ? 'Loading…' : (isPlaying ? 'Stop' : 'Play')}
+          title={loading ? t('audioLoading') : (isPlaying ? t('stop') : t('play'))}
         >
-          {loading ? '…' : (isPlaying ? 'Stop' : 'Play')}
+          {loading ? t('audioLoading') : (isPlaying ? t('stop') : t('play'))}
         </button>
       </div>
 
       {tracks.length > 1 && (
         <div className="chip-row mb-3">
-          {tracks.map(t => (
+          {tracks.map(track => (
             <button
-              key={t.id}
-              onClick={() => setSelectedId(t.id)}
-              className={`chip${selectedId === t.id ? ' is-active' : ''}`}
-              title={t.name}
+              key={track.id}
+              onClick={() => setSelectedId(track.id)}
+              className={`chip${selectedId === track.id ? ' is-active' : ''}`}
+              title={track.name}
             >
-              {t.name}
+              {track.name}
             </button>
           ))}
         </div>
@@ -151,7 +152,7 @@ export default function SoundControl() {
         step="1"
         value={sliderVal}
         onChange={onSlider}
-        aria-label="Ambient volume"
+        aria-label={t('ambientVolume')}
         className="vol"
       />
     </div>

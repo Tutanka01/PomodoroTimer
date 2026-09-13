@@ -1,34 +1,44 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from './useAuth.js';
-import { useTheme } from './useTheme.js';
 import { fetchRecentStats } from './sessionStore.js';
 import { computeConsistency, computeLongestStreak, computeLevel, buildMonthMatrixFromDaily, computeStreak } from './statsUtils.js';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import { getUserPreferences, upsertUserPreferences } from './userPrefs.js';
+import { t, LOCALE } from './i18n.js';
 
 const RANGE_PRESETS = [
-  { key: '7', label: 'Last 7 days', short: '7j', description: 'Recent focus rhythm' },
-  { key: '30', label: 'Last 30 days', short: '30j', description: 'Monthly cadence' },
-  { key: '90', label: 'Last 90 days', short: '90j', description: 'Quarter overview' },
-  { key: '365', label: 'Last 12 months', short: '1 an', description: 'Year in review' },
-  { key: 'lifetime', label: 'Since day one', short: '∞', description: 'Full history' }
+  { key: '7', labelKey: 'range7', short: '7j' },
+  { key: '30', labelKey: 'range30', short: '30j' },
+  { key: '90', labelKey: 'range90', short: '90j' },
+  { key: '365', labelKey: 'range365', short: '12m' },
+  { key: 'lifetime', labelKey: 'rangeLifetime', short: '∞' }
 ];
 
-const DEFAULT_RANGE = 'lifetime';
+const DEFAULT_RANGE = '7';
 const MAX_TIMELINE_POINTS = 120;
 
-export function DashboardPage() {
+// Jours de la semaine (lundi → dimanche) en français.
+const WEEKDAYS = Array.from({ length: 7 }, (_, i) => {
+  const label = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' }).format(new Date(2024, 0, 1 + i));
+  const clean = label.replace('.', '');
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+});
+
+export function DashboardPage({ isDark = false, toggleTheme = () => {} }) {
   const nav = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const [range, setRange] = useState(DEFAULT_RANGE);
-  const [showAdvanced, setShowAdvanced] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ sessions: [], daily: [], allDaily: [] });
   const [error, setError] = useState(null);
   const [prefs, setPrefs] = useState({ daily_focus_goal_min: 120 });
   const [savingGoal, setSavingGoal] = useState(false);
+
+  useEffect(() => {
+    document.title = t('dashboard') + ' · Flow';
+  }, []);
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem('dashboard-range') : null;
@@ -103,7 +113,7 @@ export function DashboardPage() {
   const goalProgress = DAILY_GOAL_MIN > 0 ? Math.min(1, todayFocusMin / DAILY_GOAL_MIN) : 0;
 
   const rangeMeta = RANGE_PRESETS.find(opt => opt.key === range);
-  const rangeLabel = rangeMeta?.label || `${rangeWindow.daySpan} days`;
+  const rangeLabel = rangeMeta ? t(rangeMeta.labelKey) : `${rangeWindow.daySpan} ${t('days')}`;
   const sessions = stats.sessions || [];
   const focusRatio = buildFocusRatio(sessions);
   const recentSessions = sessions;
@@ -124,7 +134,7 @@ export function DashboardPage() {
   if (authLoading) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center ${isDark?'theme-night':'theme-day'}`}> 
-        <div className="animate-pulse text-sm opacity-60">Loading...</div>
+        <div className="animate-pulse text-sm opacity-60">{t('loading')}</div>
       </div>
     );
   }
@@ -138,22 +148,27 @@ export function DashboardPage() {
         <section className="mt-4 flex flex-wrap gap-4 items-center justify-between dashboard-topbar">
           <div className="flex items-center gap-4 flex-wrap">
             <h1 className="dash-title flex items-center gap-3">
-              <span>Dashboard</span>
-              <span aria-label="Beta version" title="Beta version" className="beta-badge">Beta+</span>
+              <span>{t('dashboard')}</span>
+              <span aria-label={t('betaLabel')} title={t('betaLabel')} className="beta-badge">Beta+</span>
             </h1>
-            <span className="range-pill" title={rangeLabel}>{rangeLabel}</span>
+            <span className="range-pill" title={t('rangeAria')}>{rangeLabel}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end">
             <RangeSelector value={range} onChange={setRange} presets={RANGE_PRESETS} />
-            <button className="share-btn hidden sm:inline-flex" title="Share your progress (coming soon)">Share</button>
-            <button onClick={()=>setShowAdvanced(s=>!s)} className="ghost-toggle">{showAdvanced? 'Collapse':'Show all'}</button>
+            <button
+              onClick={()=>setShowAdvanced(s=>!s)}
+              className="ghost-toggle"
+              aria-expanded={showAdvanced}
+            >
+              {showAdvanced ? t('collapse') : t('showAll')}
+            </button>
           </div>
         </section>
 
         {error && (
           <div className="error-banner" role="alert">
-            <span>Impossible de charger toutes les données.</span>
-            <button onClick={load}>Recharger</button>
+            <span>{t('loadError')}</span>
+            <button onClick={load}>{t('reload')}</button>
           </div>
         )}
 
@@ -161,16 +176,16 @@ export function DashboardPage() {
         <div className="mt-10 grid gap-7 xl:grid-cols-12 auto-rows-min dashboard-grid">
           <TodayFocusPanel loading={loading} todayFocusMin={todayFocusMin} todayPomodoros={todayPomodoros} goal={DAILY_GOAL_MIN} goalProgress={goalProgress} avgPomodoroLength={avgPomodoroLength} onGoalChange={async (val)=>{ setSavingGoal(true); await upsertUserPreferences(user,{ daily_focus_goal_min: val}); await loadPrefs(); setSavingGoal(false); }} savingGoal={savingGoal} />
           <StreaksPanel loading={loading || lifetime.loading} current={streak} longest={longestStreak} consistency={consistency} rangeLabel={rangeLabel} goalAchieved={goalProgress>=1} />
-          <InsightsPanel loading={loading} focusRatio={focusRatio} avgPomodoroLength={avgPomodoroLength} compareRange={compareRange} levelInfo={levelInfo} rangeTotals={rangeTotals} lifetimeTotals={lifetimeTotals} sessionCount={sessionCount} />
-          {showAdvanced && <MonthCalendar matrix={monthMatrix} loading={loading} onPrev={()=>setMonthOffset(o=>o-1)} onNext={()=>setMonthOffset(o=>o+1)} offset={monthOffset} />}
           <section className="panel relative rounded-2xl p-5 xl:col-span-8 order-5 enhanced-panel" aria-labelledby="timelineHeading">
             <div className="mini-grid-bg" />
-            <h2 id="timelineHeading" className="sr-only">Timeline focus</h2>
+            <h2 id="timelineHeading" className="sr-only">{t('timeline')} · {rangeLabel}</h2>
             <ChartsSection loading={loading} series={timelineSeries} granularity={timelineGranularity} compare={compareRange} rangeLabel={rangeLabel} rangeSummary={rangeSummary} />
           </section>
+          {showAdvanced && <InsightsPanel loading={loading} focusRatio={focusRatio} avgPomodoroLength={avgPomodoroLength} compareRange={compareRange} levelInfo={levelInfo} rangeTotals={rangeTotals} lifetimeTotals={lifetimeTotals} sessionCount={sessionCount} />}
+          {showAdvanced && <MonthCalendar matrix={monthMatrix} loading={loading} onPrev={()=>setMonthOffset(o=>o-1)} onNext={()=>setMonthOffset(o=>o+1)} offset={monthOffset} />}
           {showAdvanced && <section className="panel relative rounded-2xl p-5 xl:col-span-4 order-6 enhanced-panel" aria-labelledby="lifetimeHeading">
             <div className="mini-grid-bg" />
-            <h2 id="lifetimeHeading" className="sr-only">Progression & bilan global</h2>
+            <h2 id="lifetimeHeading" className="sr-only">{t('levelProgress')} & {t('globalSummary')}</h2>
             <LevelProgress info={levelInfo} />
             <div className="separator-line" />
             <LifetimePanel lifetime={lifetime} />
@@ -178,28 +193,30 @@ export function DashboardPage() {
           {showAdvanced && <section className="xl:col-span-12 order-7"><RecentSessions loading={loading} sessions={recentSessions} /></section>}
         </div>
       </main>
-      <footer className="text-center py-6 text-xs opacity-50">Crafted for deep focus · {user?.email}</footer>
+      <footer className="text-center py-6 text-xs opacity-60">{t('footer')} · {user?.email}</footer>
     </div>
   );
 }
 
 function RangeSelector({ value, onChange, presets }) {
   return (
-    <div className="range-selector" role="radiogroup" aria-label="Plage statistiques">
+    <div className="range-selector" role="radiogroup" aria-label={t('rangeAria')}>
       {presets.map(opt => {
         const active = value === opt.key;
+        const label = t(opt.labelKey);
         return (
           <button
             key={opt.key}
             type="button"
             role="radio"
             aria-checked={active}
+            aria-label={label}
             onClick={()=>onChange(opt.key)}
             className={`range-chip ${active? 'is-active':''}`}
-            title={opt.description}
+            title={label}
           >
             <span className="short">{opt.short}</span>
-            <span className="range-chip-label">{opt.label}</span>
+            <span className="range-chip-label">{label}</span>
           </button>
         );
       })}
@@ -212,7 +229,7 @@ function Header({ nav, toggleTheme, isDark }) {
     <header className="px-5 sm:px-10 py-5 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <span className="wordmark"><span className="mark" aria-hidden="true" />Flow</span>
-        <button onClick={()=>nav('/')} className="nav-link">← Timer</button>
+        <button onClick={()=>nav('/')} className="nav-link">← {t('timer')}</button>
       </div>
       <div className="flex items-center gap-4">
         <ThemeToggle isDark={isDark} toggle={toggleTheme} />
@@ -221,29 +238,36 @@ function Header({ nav, toggleTheme, isDark }) {
   );
 }
 
+function modeLabel(mode) {
+  if (mode === 'shortBreak') return t('modeShortBreak');
+  if (mode === 'longBreak') return t('modeLongBreak');
+  if (mode === 'pomodoro') return t('modePomodoro');
+  return mode;
+}
+
 // --- Panels ---
 function TodayFocusPanel({ loading, todayFocusMin, todayPomodoros, goal, goalProgress, avgPomodoroLength, onGoalChange, savingGoal }) {
   const pct = Math.round(goalProgress*100);
   return (
     <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-4 order-1">
       <div className="mini-grid-bg" />
-  <h2 className="text-sm uppercase tracking-wide opacity-60">Today</h2>
+      <h2 className="text-sm uppercase tracking-wide opacity-60">{t('today')}</h2>
       <div className="flex items-center gap-6">
         <div className="focus-ring-wrapper">
           <div className="focus-ring" style={{ background: `conic-gradient(var(--accent) ${pct}%, var(--ring-bg) ${pct}% 100%)` }}>
-            <div className="inner">{loading? '…' : todayFocusMin}<span className="unit">m</span></div>
+            <div className="inner">{loading? '…' : todayFocusMin}<span className="unit">{t('minutes')}</span></div>
             <div className="goal-label">{pct}%</div>
           </div>
         </div>
         <div className="flex-1 grid grid-cols-2 gap-4 text-xs">
-          <div className="stat-mini"><span className="lbl">Sessions</span><span className="val">{loading? '…': todayPomodoros}</span></div>
-          <div className="stat-mini"><span className="lbl">Goal</span><span className="val">{goal}m</span></div>
-          <div className="stat-mini"><span className="lbl">Moy. Pomodoro</span><span className="val">{loading? '…': avgPomodoroLength ? `${avgPomodoroLength}m` : '—'}</span></div>
-          <div className="stat-mini"><span className="lbl">Restant</span><span className="val">{Math.max(0, goal - todayFocusMin)}m</span></div>
+          <div className="stat-mini"><span className="lbl">{t('pomodoros')}</span><span className="val">{loading? '…': todayPomodoros}</span></div>
+          <div className="stat-mini"><span className="lbl">{t('dailyGoal')}</span><span className="val">{goal} {t('minutes')}</span></div>
+          <div className="stat-mini"><span className="lbl">{t('avgPomodoro')}</span><span className="val">{loading? '…': avgPomodoroLength ? `${avgPomodoroLength} ${t('minutes')}` : '—'}</span></div>
+          <div className="stat-mini"><span className="lbl">{t('remaining')}</span><span className="val">{Math.max(0, goal - todayFocusMin)} {t('minutes')}</span></div>
         </div>
       </div>
-      <p className="text-[11px] leading-snug opacity-60">
-  {goalProgress>=1 ? 'Daily goal reached. Habit bonus secured ✅' : `Reach ${goal} min to secure your streak.`}
+      <p className="text-xs leading-snug opacity-60">
+        {goalProgress>=1 ? t('goalReached') : t('goalHint', { n: goal })}
       </p>
       <GoalEditor current={goal} onChange={onGoalChange} saving={savingGoal} />
     </section>
@@ -254,10 +278,10 @@ function GoalEditor({ current, onChange, saving }) {
   const [val,setVal] = useState(current);
   useEffect(()=>{ setVal(current); }, [current]);
   return (
-    <div className="flex items-center gap-2 text-[11px] flex-wrap">
-  <span className="opacity-60 uppercase tracking-wide">Daily goal</span>
-      <input type="number" min={15} step={15} value={val} onChange={e=>setVal(e.target.value)} className="goal-input" />
-  <button disabled={saving || val==current} onClick={()=>onChange(Number(val)||current)} className="goal-save-btn disabled:opacity-40 disabled:cursor-not-allowed">{saving? '...':'Save'}</button>
+    <div className="flex items-center gap-2 text-xs flex-wrap">
+      <span className="opacity-60 uppercase tracking-wide">{t('dailyGoal')}</span>
+      <input type="number" min={15} step={15} value={val} onChange={e=>setVal(e.target.value)} className="goal-input" aria-label={t('dailyGoal')} />
+      <button disabled={saving || val==current} onClick={()=>onChange(Number(val)||current)} className="goal-save-btn disabled:opacity-40 disabled:cursor-not-allowed">{saving? t('loading') : t('save')}</button>
     </div>
   );
 }
@@ -266,81 +290,79 @@ function StreaksPanel({ loading, current, longest, consistency, rangeLabel, goal
   return (
     <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-4 order-2">
       <div className="mini-grid-bg" />
-      <h2 className="text-sm uppercase tracking-wide opacity-60">Streaks</h2>
+      <h2 className="text-sm uppercase tracking-wide opacity-60">{t('streaks')}</h2>
       <div className="grid grid-cols-2 gap-4">
         <div className="streak-box">
-          <span className="lbl">Streak actuel</span>
+          <span className="lbl">{t('currentStreak')}</span>
           <span className="big-val">{loading? '…': current}</span>
-          <span className="sm-note">days</span>
+          <span className="sm-note">{current > 1 ? t('days') : t('day')}</span>
         </div>
         <div className="streak-box">
-          <span className="lbl">Best</span>
+          <span className="lbl">{t('bestStreak')}</span>
             <span className="big-val">{loading? '…': longest}</span>
-          <span className="sm-note">days</span>
+          <span className="sm-note">{longest > 1 ? t('days') : t('day')}</span>
         </div>
         <div className="streak-box">
-          <span className="lbl">Consistance</span>
+          <span className="lbl">{t('consistency')}</span>
           <span className="big-val">{loading? '…': consistency+'%'}</span>
           <span className="sm-note">{rangeLabel}</span>
         </div>
         <div className="streak-box">
-          <span className="lbl">Safety</span>
-          <span className={`badge ${goalAchieved? 'ok':'pending'}`}>{goalAchieved? 'OK':'In progress'}</span>
-          <span className="sm-note">daily goal</span>
+          <span className="lbl">{t('safety')}</span>
+          <span className={`badge ${goalAchieved? 'ok':'pending'}`}>{goalAchieved? t('reached'): t('inProgress')}</span>
+          <span className="sm-note">{t('dailyGoal')}</span>
         </div>
       </div>
-  <p className="text-[11px] leading-snug opacity-60">Keep your streak by hitting the daily goal. Consistency beats intensity.</p>
+      <p className="text-xs leading-snug opacity-60">{t('keepStreak')}</p>
     </section>
   );
 }
 
-// Nouveau panneau Overview combinant Today + Streak + meta stats
-// Nouveau panneau d'insights isolé
 function InsightsPanel({ loading, focusRatio, avgPomodoroLength, compareRange, levelInfo, rangeTotals, lifetimeTotals, sessionCount }) {
   const hasWeekly = !!(compareRange && compareRange.current?.length);
   const deltaLabelRaw = hasWeekly ? (compareRange.deltaMinutes>=0 ? `+${compareRange.deltaMinutes}` : `${compareRange.deltaMinutes}`) : '—';
   const deltaPctRaw = hasWeekly ? (compareRange.percent>=0 ? `+${compareRange.percent}` : `${compareRange.percent}`) : '—';
-  const rangeFocus = !loading ? `${rangeTotals.focusMinutes || 0}m` : '…';
-  const rangeSpanLabel = !loading ? (rangeTotals.daySpan ? `${rangeTotals.daySpan} jours` : '—') : '…';
-  const lifetimeFocus = !loading ? `${lifetimeTotals.focusMinutes || 0}m` : '…';
+  const rangeFocus = !loading ? `${rangeTotals.focusMinutes || 0} ${t('minutes')}` : '…';
+  const rangeSpanLabel = !loading ? (rangeTotals.daySpan ? `${rangeTotals.daySpan} ${t('days')}` : '—') : '…';
+  const lifetimeFocus = !loading ? `${lifetimeTotals.focusMinutes || 0} ${t('minutes')}` : '…';
   const lifetimeSessions = !loading ? (lifetimeTotals.sessions ?? '—') : '…';
   const ratioLabel = Number.isFinite(focusRatio) ? (sessionCount ? `${focusRatio}%` : '—') : '—';
-  const avgLengthLabel = avgPomodoroLength ? `${avgPomodoroLength}m` : '—';
+  const avgLengthLabel = avgPomodoroLength ? `${avgPomodoroLength} ${t('minutes')}` : '—';
   return (
-    <section className="panel relative rounded-2xl p-5 xl:col-span-4 order-3 insights-panel" aria-label="Insights">
+    <section className="panel relative rounded-2xl p-5 xl:col-span-4 order-3 insights-panel" aria-label={t('insights')}>
       <div className="mini-grid-bg" />
-      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-4">Insights</h2>
+      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-4">{t('insights')}</h2>
       <div className="simple-chip-grid">
         <div className="simple-chip">
-          <span className="lbl">Focus Ratio</span>
-          <span className="val">{loading? '…': ratioLabel}<span className="sub">deep</span></span>
+          <span className="lbl">{t('focusRatio')}</span>
+          <span className="val">{loading? '…': ratioLabel}<span className="sub">{t('deepWork')}</span></span>
         </div>
         <div className="simple-chip">
-          <span className="lbl">Avg Length</span>
-          <span className="val">{loading? '…': avgLengthLabel}<span className="sub">pomodoro</span></span>
+          <span className="lbl">{t('avgLength')}</span>
+          <span className="val">{loading? '…': avgLengthLabel}<span className="sub">{t('perPomodoro')}</span></span>
         </div>
         <div className="simple-chip">
-          <span className="lbl">Range Focus</span>
+          <span className="lbl">{t('rangeFocus')}</span>
           <span className="val">{rangeFocus}<span className="sub">{rangeSpanLabel}</span></span>
         </div>
         <div className="simple-chip">
-          <span className="lbl">Lifetime Focus</span>
-          <span className="val">{lifetimeFocus}<span className="sub">{lifetimeSessions} sessions · {lifetimeTotals.avgPerDay || 0}m/j</span></span>
+          <span className="lbl">{t('lifetimeFocus')}</span>
+          <span className="val">{lifetimeFocus}<span className="sub">{t('sessionsInline', { n: lifetimeSessions })} · {lifetimeTotals.avgPerDay || 0} {t('minutes')} / {t('day')}</span></span>
         </div>
       </div>
       <div className="mt-4">
         <div className={`simple-chip weekly ${hasWeekly ? (compareRange.deltaMinutes>=0? 'pos':'neg') : ''}`}>
-          <span className="lbl">Weekly Δ</span>
-          <span className="val">{loading? '…': hasWeekly ? `${deltaLabelRaw}m` : '—'}<span className={`sub ${hasWeekly ? (compareRange.percent>=0? 'pos':'neg') : ''}`}>{loading? '…': hasWeekly ? `${deltaPctRaw}%` : '—'}</span></span>
+          <span className="lbl">{t('weeklyDelta')}</span>
+          <span className="val">{loading? '…': hasWeekly ? `${deltaLabelRaw} ${t('minutes')}` : '—'}<span className={`sub ${hasWeekly ? (compareRange.percent>=0? 'pos':'neg') : ''}`}>{loading? '…': hasWeekly ? `${deltaPctRaw}%` : '—'}</span></span>
         </div>
       </div>
       {levelInfo && (
         <div className="mt-6">
-          <div className="flex justify-between text-[10px] font-medium opacity-70 mb-2"><span>Level {levelInfo.level}</span><span>{Math.round(levelInfo.progress*100)}%</span></div>
+          <div className="flex justify-between text-xs font-medium opacity-60 mb-2"><span>{t('level')} {levelInfo.level}</span><span>{Math.round(levelInfo.progress*100)}%</span></div>
           <div className="h-2 rounded-full overflow-hidden level-mini-track">
             <div className="h-full level-mini-fill" style={{ width: `${Math.min(100, levelInfo.progress*100)}%`}} />
           </div>
-          <div className="text-[10px] opacity-50 mt-2">Next in {levelInfo.needed - levelInfo.current} min</div>
+          <div className="text-xs opacity-60 mt-2">{t('nextLevelIn', { n: levelInfo.needed - levelInfo.current })}</div>
         </div>
       )}
     </section>
@@ -350,33 +372,33 @@ function InsightsPanel({ loading, focusRatio, avgPomodoroLength, compareRange, l
 function LifetimePanel({ lifetime }) {
   return (
     <div className="lifetime-grid">
-      <h3 className="text-xs uppercase tracking-wide opacity-60 mb-3">Bilan Global</h3>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-[11px]">
+      <h3 className="text-xs uppercase tracking-wide opacity-60 mb-3">{t('globalSummary')}</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
         <div className="life-box">
           <span className="val">{lifetime.loading? '…': lifetime.totalFocusMin}</span>
-          <span className="lbl">min focus</span>
+          <span className="lbl">{t('minFocus')}</span>
         </div>
         <div className="life-box">
           <span className="val">{lifetime.loading? '…': lifetime.totalSessions}</span>
-          <span className="lbl">sessions</span>
+          <span className="lbl">{t('sessions')}</span>
         </div>
         <div className="life-box">
           <span className="val">{lifetime.loading? '…': lifetime.focusDays}</span>
-          <span className="lbl">active days</span>
+          <span className="lbl">{t('activeDays')}</span>
         </div>
         <div className="life-box">
           <span className="val">{lifetime.loading? '…': lifetime.avgPerDay}</span>
-          <span className="lbl">avg m / day</span>
+          <span className="lbl">{t('minPerDay')}</span>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-center text-[11px]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-center text-xs">
         <div className="life-box">
-          <span className="val text-base">🔥 {lifetime.loading? '…': lifetime.longestStreak} j</span>
-          <span className="lbl">best streak</span>
+          <span className="val text-sm">🔥 {lifetime.loading? '…': lifetime.longestStreak} j</span>
+          <span className="lbl">{t('bestStreak')}</span>
         </div>
         <div className="life-box">
-          <span className="val text-base">⚡ {lifetime.loading? '…': lifetime.currentStreak} j</span>
-          <span className="lbl">current streak</span>
+          <span className="val text-sm">⚡ {lifetime.loading? '…': lifetime.currentStreak} j</span>
+          <span className="lbl">{t('currentStreak')}</span>
         </div>
       </div>
     </div>
@@ -386,7 +408,7 @@ function LifetimePanel({ lifetime }) {
 function ChartsSection({ loading, series, granularity, compare, rangeLabel, rangeSummary }) {
   const hasFocus = series.some(pt=>pt.value>0);
   const totalPomodoros = rangeSummary.pomodoros || 0;
-  const granularityLabel = granularity==='day' ? 'Daily view' : granularity==='week' ? 'Weekly buckets' : 'Monthly buckets';
+  const granularityLabel = granularity==='day' ? t('viewDaily') : granularity==='week' ? t('viewWeekly') : t('viewMonthly');
   const totalMinutes = rangeSummary.totalFocusMinutes;
   const focusPerDay = rangeSummary.daySpan ? Math.round(totalMinutes / rangeSummary.daySpan) : 0;
   const firstLabel = rangeSummary.firstDay ? formatFullDate(rangeSummary.firstDay) : null;
@@ -396,8 +418,8 @@ function ChartsSection({ loading, series, granularity, compare, rangeLabel, rang
     return (
       <div>
         <div className="flex flex-wrap items-baseline justify-between gap-3 mb-4">
-          <h2 className="text-sm uppercase tracking-wide opacity-60">Timeline • {rangeLabel}</h2>
-          <span className="text-[10px] opacity-50 uppercase tracking-wide">{granularityLabel}</span>
+          <h2 className="text-sm uppercase tracking-wide opacity-60">{t('timeline')} • {rangeLabel}</h2>
+          <span className="text-xs opacity-60 uppercase tracking-wide">{granularityLabel}</span>
         </div>
         <EmptyTimelineState firstLabel={firstLabel} />
       </div>
@@ -409,41 +431,47 @@ function ChartsSection({ loading, series, granularity, compare, rangeLabel, rang
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm uppercase tracking-wide opacity-60">Timeline • {rangeLabel}</h2>
+          <h2 className="text-sm uppercase tracking-wide opacity-60">{t('timeline')} • {rangeLabel}</h2>
           {firstLabel && lastLabel && (
             <span className="timeline-range-label">{firstLabel} → {lastLabel}</span>
           )}
         </div>
-        <span className="text-[10px] opacity-50 uppercase tracking-wide">{granularityLabel}</span>
+        <span className="text-xs opacity-60 uppercase tracking-wide">{granularityLabel}</span>
       </div>
-      <div className="timeline-summary grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 text-[11px]">
-        <div className="summary-chip"><span className="lbl">Total Focus</span><span className="val">{totalMinutes}m</span></div>
-        <div className="summary-chip"><span className="lbl">Pomodoros</span><span className="val">{totalPomodoros}</span></div>
-        <div className="summary-chip"><span className="lbl">Avg / day</span><span className="val">{focusPerDay}m</span></div>
-        <div className="summary-chip"><span className="lbl">Span</span><span className="val">{rangeSummary.daySpan}j</span></div>
+      <div className="timeline-summary grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 text-xs">
+        <div className="summary-chip"><span className="lbl">{t('totalFocus')}</span><span className="val">{totalMinutes} {t('minutes')}</span></div>
+        <div className="summary-chip"><span className="lbl">{t('pomodoros')}</span><span className="val">{totalPomodoros}</span></div>
+        <div className="summary-chip"><span className="lbl">{t('avgPerDay')}</span><span className="val">{focusPerDay} {t('minutes')}</span></div>
+        <div className="summary-chip"><span className="lbl">{t('span')}</span><span className="val">{rangeSummary.daySpan} {t('days')}</span></div>
       </div>
-      <div className="flex gap-2 items-end h-44 timeline-bars">
+      <div className="flex gap-2 items-end h-44 timeline-bars" role="img" aria-label={t('chartSummary', { range: rangeLabel })}>
         {series.map((pt, idx) => {
           const h = Math.max(2, Math.round((pt.value / max) * 100));
           const showLabel = shouldShowTimelineLabel(idx, series.length);
+          const barLabel = t('chartBarAria', { label: pt.label, value: pt.value });
           return (
             <div key={`${pt.label}-${idx}`} className="flex-1 flex flex-col items-center min-w-[14px]">
-              <div className="w-full max-w-[24px] h-full timeline-bar-track">
+              <div className="w-full max-w-[24px] h-full timeline-bar-track" role="img" aria-label={barLabel} title={barLabel}>
                 <div className="timeline-bar-fill" style={{ height: loading? '0%' : h+'%' }} />
               </div>
-              <span className="mt-2 text-[9px] opacity-60 uppercase tracking-wide h-4 flex items-center justify-center">
+              <span className="mt-2 text-xs opacity-60 uppercase tracking-wide h-4 flex items-center justify-center">
                 {showLabel ? pt.label : '\u00A0'}
               </span>
             </div>
           );
         })}
       </div>
+      <ul className="sr-only">
+        {series.map((pt, idx) => (
+          <li key={`${pt.label}-${idx}`}>{pt.label} : {pt.value} {t('minutes')}</li>
+        ))}
+      </ul>
       {compare && compare.current?.length ? (
-        <div className="mt-6 flex flex-wrap items-center gap-4 text-[11px] comparison-bar">
-          <span className="opacity-60 uppercase tracking-wide">Weekly Comparison</span>
-          <span className={`delta ${compare.deltaMinutes>=0? 'pos':'neg'}`}>{compare.deltaMinutes>=0? '+':''}{compare.deltaMinutes} min</span>
+        <div className="mt-6 flex flex-wrap items-center gap-4 text-xs comparison-bar">
+          <span className="opacity-60 uppercase tracking-wide">{t('weeklyDelta')}</span>
+          <span className={`delta ${compare.deltaMinutes>=0? 'pos':'neg'}`}>{compare.deltaMinutes>=0? '+':''}{compare.deltaMinutes} {t('minutes')}</span>
           <span className={`delta ${compare.percent>=0? 'pos':'neg'}`}>{compare.percent>=0? '+':''}{compare.percent}%</span>
-          <span className="opacity-40">vs previous 7 days</span>
+          <span className="opacity-60">{t('previousWeek')}</span>
         </div>
       ) : null}
     </div>
@@ -454,10 +482,10 @@ function EmptyTimelineState({ firstLabel }) {
   return (
     <div className="timeline-empty">
       <div className="empty-inner">
-        <h3>Not enough data yet</h3>
-        <p>Start your first pomodoro to unlock insights and see your focus timeline grow.</p>
-        <Link className="empty-cta" to="/">Launch timer</Link>
-        {firstLabel && <span className="first-session-hint">First recorded day: {firstLabel}</span>}
+        <h3>{t('emptyTitle')}</h3>
+        <p>{t('emptyText')}</p>
+        <Link className="empty-cta" to="/">{t('emptyCta')}</Link>
+        {firstLabel && <span className="first-session-hint">{t('emptyFirstDay', { date: firstLabel })}</span>}
       </div>
     </div>
   );
@@ -468,42 +496,53 @@ function LevelProgress({ info }) {
   return (
     <div className="mt-10 panel">
       <div className="mini-grid-bg" />
-      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-3">Level Progress</h2>
+      <h2 className="text-sm uppercase tracking-wide opacity-60 mb-3">{t('levelProgress')}</h2>
       <div>
-        <div className="flex justify-between text-xs opacity-70 mb-2"><span>Level {info.level}</span><span>{Math.round(info.progress*100)}%</span></div>
+        <div className="flex justify-between text-xs opacity-60 mb-2"><span>{t('level')} {info.level}</span><span>{Math.round(info.progress*100)}%</span></div>
         <div className="h-3 rounded-full overflow-hidden level-bar-track">
           <div className="h-full level-bar-fill" style={{ width: `${Math.min(100, info.progress*100)}%`}} />
         </div>
-        <div className="text-[10px] opacity-50 mt-2">Next level in {info.needed - info.current} min</div>
+        <div className="text-xs opacity-60 mt-2">{t('nextLevelIn', { n: info.needed - info.current })}</div>
       </div>
     </div>
   );
 }
 
-function MonthCalendar({ matrix, loading, onPrev, onNext, offset }) {
+function MonthCalendar({ matrix, onPrev, onNext }) {
   if (!matrix) return null;
-  const max = matrix.weeks.flat().filter(Boolean).reduce((m,c)=>Math.max(m,c.seconds),0) || 1;
+  const weeks = mondayFirstWeeks(matrix.weeks);
+  const max = weeks.flat().filter(Boolean).reduce((m,c)=>Math.max(m,c.seconds),0) || 1;
+  const monthLabel = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }).format(new Date(matrix.year, matrix.month, 1));
   return (
     <section className="panel relative rounded-2xl p-5 lg:col-span-4 order-3">
       <div className="mini-grid-bg" />
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button onClick={onPrev} className="nav-chip">←</button>
-          <h2 className="text-sm uppercase tracking-wide opacity-70">{matrix.monthLabel}</h2>
-          <button onClick={onNext} className="nav-chip">→</button>
+          <button onClick={onPrev} className="nav-chip" aria-label={t('prevMonth')} title={t('prevMonth')}>←</button>
+          <h2 className="text-sm uppercase tracking-wide opacity-60">{monthLabel}</h2>
+          <button onClick={onNext} className="nav-chip" aria-label={t('nextMonth')} title={t('nextMonth')}>→</button>
         </div>
-        <span className="text-[10px] opacity-50">{Math.round(matrix.totalSeconds/60)} min</span>
+        <span className="text-xs opacity-60">{t('monthTotal')} · {Math.round(matrix.totalSeconds/60)} {t('minutes')}</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {WEEKDAYS.map(day => (
+          <span key={day} className="cal-weekday text-xs text-center opacity-60">{day}</span>
+        ))}
       </div>
       <div className="space-y-1">
-        {matrix.weeks.map((w,i)=>(
+        {weeks.map((w,i)=>(
           <div key={i} className="grid grid-cols-7 gap-1">
             {w.map((cell,j)=>{
               if(!cell) return <div key={j} className="h-7 rounded-md bg-transparent" />;
               const ratio = cell.seconds / max;
+              const minutes = Math.round(cell.seconds/60);
+              const dateKey = `${matrix.year}-${String(matrix.month+1).padStart(2,'0')}-${String(cell.day).padStart(2,'0')}`;
+              const dateLabel = formatFullDate(dateKey);
+              const cellLabel = t('chartBarAria', { label: dateLabel, value: minutes });
               return (
-                <div key={j} title={`${cell.day} • ${Math.round(cell.seconds/60)} min`} className="h-7 rounded-md relative overflow-hidden calendar-cell" style={{ background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
+                <div key={j} title={cellLabel} aria-label={cellLabel} className="h-7 rounded-md relative overflow-hidden calendar-cell" style={{ background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
                   <div className="absolute inset-0" style={{ background: 'var(--accent)', opacity: ratio ? 0.18 + 0.62 * ratio : 0 }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium" style={{ color: 'var(--ink)', opacity: 0.75 }}>{cell.day}</span>
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium" style={{ color: 'var(--ink)', opacity: 0.6 }}>{cell.day}</span>
                 </div>
               );
             })}
@@ -515,29 +554,47 @@ function MonthCalendar({ matrix, loading, onPrev, onNext, offset }) {
 }
 
 function RecentSessions({ loading, sessions }) {
+  const rows = sessions.slice(0, 25);
   return (
     <section className="mt-14 mb-10">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-sm uppercase tracking-wide opacity-60">Recent Sessions</h2>
-        <span className="text-[10px] opacity-50">Latest {Math.min(25, sessions.length)}</span>
+        <h2 className="text-sm uppercase tracking-wide opacity-60">{t('recentSessions')}</h2>
+        <span className="text-xs opacity-60">{t('latestCount', { n: Math.min(25, sessions.length) })}</span>
       </div>
-      <div className="table-wrap">
-        <div className="table-head grid grid-cols-5 text-[10px] uppercase tracking-wide px-4 py-2" style={{ color: 'var(--ink-faint)' }}>
-          <span>Mode</span><span>Start</span><span>End</span><span>Dur (m)</span><span>Intention</span>
+      <div className="session-cards sm:hidden">
+        {loading && <SkeletonCards />}
+        {!loading && rows.length === 0 && (
+          <p className="text-sm opacity-60 text-center py-4">{t('noSessions')}</p>
+        )}
+        {!loading && rows.map(s => (
+          <article key={s.id} className="session-card">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{modeLabel(s.mode)}</span>
+              <span className="text-sm font-semibold tabular-nums">{Math.round(s.duration_seconds/60)} {t('minutes')}</span>
+            </div>
+            <div className="text-xs tabular-nums opacity-60">{formatClock(s.started_at)} → {formatClock(s.ended_at)}</div>
+            <div className="text-xs opacity-60">{s.intention || '—'}</div>
+            {s.productivity_rating ? <div className="text-xs">★ {s.productivity_rating}/5</div> : null}
+          </article>
+        ))}
+      </div>
+      <div className="table-wrap hidden sm:block">
+        <div className="table-head grid grid-cols-5 text-xs uppercase tracking-wide px-4 py-2" style={{ color: 'var(--ink-soft)' }}>
+          <span>{t('colMode')}</span><span>{t('colStart')}</span><span>{t('colEnd')}</span><span>{t('colDuration')}</span><span>{t('colIntention')}</span>
         </div>
         <div className="max-h-72 overflow-auto">
           {loading && <SkeletonRows />}
-          {!loading && sessions.slice(0,25).map(s => (
-            <div key={s.id} className="table-row grid grid-cols-5 text-xs px-4 py-2">
-              <span className="font-medium capitalize">{s.mode}</span>
-              <span className="opacity-70 tabular-nums">{formatClock(s.started_at)}</span>
-              <span className="opacity-70 tabular-nums">{formatClock(s.ended_at)}</span>
-              <span className="opacity-70">{Math.round(s.duration_seconds/60)}</span>
-              <span className="truncate opacity-70" title={s.intention || ''}>{s.intention || '—'}</span>
+          {!loading && rows.map(s => (
+            <div key={s.id} className="table-row grid grid-cols-5 text-sm px-4 py-2">
+              <span className="font-medium">{modeLabel(s.mode)}</span>
+              <span className="opacity-60 tabular-nums">{formatClock(s.started_at)}</span>
+              <span className="opacity-60 tabular-nums">{formatClock(s.ended_at)}</span>
+              <span className="opacity-60 tabular-nums">{Math.round(s.duration_seconds/60)}</span>
+              <span className="truncate opacity-60" title={s.intention || ''}>{s.intention || '—'}</span>
             </div>
           ))}
-          {!loading && sessions.length===0 && (
-            <div className="px-4 py-6 text-xs opacity-60 text-center">No sessions yet.</div>
+          {!loading && rows.length===0 && (
+            <div className="px-4 py-6 text-sm opacity-60 text-center">{t('noSessions')}</div>
           )}
         </div>
       </div>
@@ -549,6 +606,14 @@ function SkeletonRows() {
   return Array.from({ length: 8 }).map((_,i)=>(
     <div key={i} className="grid grid-cols-5 px-4 py-2 animate-pulse">
       {Array.from({length:5}).map((_,j)=>(<span key={j} className="h-3 rounded bg-white/10" />))}
+    </div>
+  ));
+}
+
+function SkeletonCards() {
+  return Array.from({ length: 4 }).map((_,i)=>(
+    <div key={i} className="session-card animate-pulse" aria-hidden="true">
+      <span className="block h-3 rounded bg-white/10" />
     </div>
   ));
 }
@@ -740,21 +805,21 @@ function toDateKey(date) {
 }
 
 function formatDayLabel(day) {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' });
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(LOCALE, { month: 'numeric', day: 'numeric' });
 }
 
 function formatRangeLabel(startDay, endDay) {
-  if (!startDay || !endDay) return 'Week';
+  if (!startDay || !endDay) return '—';
   const start = new Date(`${startDay}T00:00:00Z`);
   const end = new Date(`${endDay}T00:00:00Z`);
-  const fmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const fmt = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric' });
   return `${fmt.format(start)}-${fmt.format(end)}`;
 }
 
 function formatMonthLabel(key) {
-  if (!key) return 'Month';
+  if (!key) return '—';
   const [year, month] = key.split('-').map(Number);
-  return new Date(year, (month||1)-1, 1).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+  return new Date(year, (month||1)-1, 1).toLocaleDateString(LOCALE, { month: 'short', year: '2-digit' });
 }
 
 function shouldShowTimelineLabel(index, total) {
@@ -766,8 +831,20 @@ function shouldShowTimelineLabel(index, total) {
 
 function formatFullDate(day) {
   if (!day) return '';
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Reconstruit les semaines pour un affichage commençant le lundi.
+function mondayFirstWeeks(weeks) {
+  const days = weeks.flat().filter(Boolean);
+  const sundayLead = weeks[0] ? weeks[0].findIndex(cell => cell !== null) : 0;
+  const lead = (sundayLead + 6) % 7;
+  const cells = [...new Array(lead).fill(null), ...days];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const out = [];
+  for (let i=0;i<cells.length;i+=7) out.push(cells.slice(i, i+7));
+  return out;
 }
 
 function buildFocusRatio(all){ if(!all.length) return 0; const focus=all.filter(s=>s.mode==='pomodoro').reduce((a,s)=>a+s.duration_seconds,0); const total=all.reduce((a,s)=>a+s.duration_seconds,0); return Math.round((focus/total)*100)||0; }
-function formatClock(ts){ if(!ts) return ''; const d=new Date(ts); return d.toLocaleTimeString([], { hour: '2-digit', minute:'2-digit'}); }
+function formatClock(ts){ if(!ts) return ''; const d=new Date(ts); return d.toLocaleTimeString(LOCALE, { hour: '2-digit', minute:'2-digit'}); }
