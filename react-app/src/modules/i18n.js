@@ -40,8 +40,10 @@ export const STRINGS = {
     rating3: 'Correct',
     rating5: 'Très concentré',
     ratingHint: 'La note est facultative : votre session est déjà enregistrée.',
-    ratingLater: 'Plus tard',
+    ratingLater: 'Ignorer',
     ratingSave: 'Enregistrer la note',
+    pendingSessions: 'Session(s) en attente d’envoi : {n}',
+    retry: 'Réessayer',
 
     // ----- Authentification
     login: 'Connexion',
@@ -99,7 +101,7 @@ export const STRINGS = {
     viewWeekly: 'Vue hebdomadaire',
     viewMonthly: 'Vue mensuelle',
     totalFocus: 'Focus total',
-    pomodoros: 'Pomodoros',
+    pomodoros: 'Sessions',
     avgPerDay: 'Moy. / jour',
     span: 'Période',
     emptyTitle: 'Pas encore de données',

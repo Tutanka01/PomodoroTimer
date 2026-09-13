@@ -3,7 +3,29 @@ import { ensureAudio, playStartSound, playNotificationSound } from './sound.js';
 
 const SESSIONS_BEFORE_LONG_BREAK = 4;
 
-const initialDurations = JSON.parse(localStorage.getItem('flow-timers')) || { pomodoro: 25, shortBreak: 5, longBreak: 15 };
+const DEFAULT_DURATIONS = { pomodoro: 25, shortBreak: 5, longBreak: 15 };
+
+// Lecture tolérante aux préférences corrompues (évite une page blanche au chargement).
+function loadDurations() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('flow-timers'));
+    if (raw && typeof raw === 'object') {
+      const clean = {};
+      for (const key of ['pomodoro', 'shortBreak', 'longBreak']) {
+        const value = Number(raw[key]);
+        clean[key] = Number.isFinite(value)
+          ? Math.min(180, Math.max(1, Math.round(value)))
+          : DEFAULT_DURATIONS[key];
+      }
+      return clean;
+    }
+  } catch {
+    // préférence illisible : on repart des valeurs par défaut
+  }
+  return { ...DEFAULT_DURATIONS };
+}
+
+const initialDurations = loadDurations();
 
 const initialState = {
   currentMode: 'pomodoro',
@@ -45,9 +67,10 @@ function reducer(state, action) {
         ...state,
         currentMode: 'pomodoro',
         timeRemaining: state.durations.pomodoro * 60,
-        uiState: state.isRunning ? 'state-work' : 'state-idle',
+        uiState: 'state-idle', // démarrage manuel : pas d'enchaînement forcé
         progress: 0,
-        targetEpoch: Date.now() + state.durations.pomodoro * 60 * 1000
+        isRunning: false,
+        targetEpoch: null
       };
     }
   case 'START': return { ...state, isRunning: true, uiState: state.currentMode==='pomodoro' ? 'state-work' : 'state-break', targetEpoch: Date.now() + state.timeRemaining * 1000 }; // timeRemaining already in seconds
@@ -63,6 +86,10 @@ export function usePomodoro({ onSessionComplete } = {}) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const intervalRef = useRef(null);
   const lastRemainingRef = useRef(state.timeRemaining);
+  // Toujours appeler la dernière version du callback : si /api/auth/me se résout
+  // pendant la session, la fin de cycle voit le bon utilisateur (session jamais perdue).
+  const onCompleteRef = useRef(onSessionComplete);
+  useEffect(() => { onCompleteRef.current = onSessionComplete; });
 
   useEffect(()=> { localStorage.setItem('flow-timers', JSON.stringify(state.durations)); }, [state.durations]);
 
@@ -80,12 +107,13 @@ export function usePomodoro({ onSessionComplete } = {}) {
       }
       if (remainingMs <= 0) {
         playNotificationSound(state.currentMode==='pomodoro');
-  // callback before mutation to provide previous mode & time window
-        if (onSessionComplete) {
+        // callback avant mutation pour fournir le mode et la fenêtre temporelle précédents
+        const notify = onCompleteRef.current;
+        if (notify) {
           const duration = state.durations[state.currentMode] * 60;
           const endedAt = new Date();
-            const startedAt = new Date(endedAt.getTime() - duration * 1000);
-          try { onSessionComplete({ mode: state.currentMode, startedAt, endedAt }); } catch(e){ console.error(e); }
+          const startedAt = new Date(endedAt.getTime() - duration * 1000);
+          try { notify({ mode: state.currentMode, startedAt, endedAt }); } catch(e){ console.error(e); }
         }
         dispatch({ type: 'COMPLETE_CYCLE' });
       }
@@ -99,7 +127,6 @@ export function usePomodoro({ onSessionComplete } = {}) {
   }, [state.isRunning, state.targetEpoch, state.currentMode]);
 
   useEffect(()=> {
-    document.documentElement.style.setProperty('--counter-fill', state.uiState==='state-idle' ? (document.body.classList.contains('theme-night') ? '#e2e8f0' : '#0f172a') : '#e2e8f0');
     const body = document.body;
     body.classList.remove('state-idle','state-work','state-break');
     body.classList.add(state.uiState);

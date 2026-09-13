@@ -5,7 +5,7 @@ import { Intention } from './Intention.jsx';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import SoundControl from './SoundControl.jsx';
 import { usePomodoro } from './usePomodoro.js';
-import { logSession, updateSessionRating } from './sessionStore.js';
+import { logSession, updateSessionRating, flushOutbox, pendingSessionCount } from './sessionStore.js';
 import { t } from './i18n.js';
 import { useAuth } from './useAuth.js';
 import { Link } from 'react-router-dom';
@@ -21,7 +21,16 @@ export default function App({ isDark, toggleTheme }) {
   const [intention, setIntention] = useState('');
   const { user, signOut } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const settingsPanelRef = useRef(null);
+
+  // Renvoie les sessions mises en attente après un échec réseau.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    flushOutbox().then(remaining => { if (!cancelled) setPendingCount(remaining); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro({
     onSessionComplete: async ({ mode, startedAt, endedAt }) => {
@@ -31,12 +40,18 @@ export default function App({ isDark, toggleTheme }) {
         setIntention('');
         if (session) setPendingRating(session);
       }
+      setPendingCount(pendingSessionCount());
     }
   });
 
-  // Raccourcis clavier : Espace = démarrer/pause, R = réinitialiser, Échap = fermer les réglages.
+  // Raccourcis clavier : Espace = démarrer/pause, R = réinitialiser, Échap = fermer.
   useEffect(() => {
     const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setShowSettings(false);
+        setPendingRating(null);
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey || pendingRating) return;
       const el = e.target;
       // Ne pas voler Espace/Entrée quand un contrôle interactif a le focus.
@@ -47,13 +62,11 @@ export default function App({ isDark, toggleTheme }) {
       } else if (e.key.toLowerCase() === 'r') {
         e.preventDefault();
         reset();
-      } else if (e.key === 'Escape') {
-        setShowSettings(false);
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [state.isRunning, start, pause, reset]);
+  }, [state.isRunning, start, pause, reset, pendingRating]);
 
   // Donne le focus au panneau de réglages à l'ouverture.
   useEffect(() => { if (showSettings) settingsPanelRef.current?.focus(); }, [showSettings]);
@@ -138,6 +151,13 @@ export default function App({ isDark, toggleTheme }) {
         <button onClick={reset} className="btn-ghost" title={t('reset')} aria-label={t('reset')}>↺</button>
       </div>
 
+      {user && pendingCount > 0 && (
+        <div className="pending-banner" role="status">
+          <span>{t('pendingSessions', { n: pendingCount })}</span>
+          <button onClick={async () => setPendingCount(await flushOutbox())} className="link-muted">{t('retry')}</button>
+        </div>
+      )}
+
       <footer className="timer-footer">{t('footer')}</footer>
 
       {pendingRating && (
@@ -155,9 +175,11 @@ export default function App({ isDark, toggleTheme }) {
 
 function RatingModal({ session, onClose }) {
   const [value, setValue] = useState(null);
+  const cardRef = useRef(null);
+  useEffect(() => { cardRef.current?.focus(); }, []);
   return (
     <div className="modal-backdrop" onClick={() => onClose(null)}>
-      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="rating-title" onClick={e => e.stopPropagation()}>
+      <div ref={cardRef} tabIndex={-1} className="modal-card" role="dialog" aria-modal="true" aria-labelledby="rating-title" onClick={e => e.stopPropagation()}>
         <button onClick={() => onClose(null)} className="modal-close absolute top-3 right-4 text-sm" aria-label={t('close')}>✕</button>
         <h3 id="rating-title" className="modal-title mb-1">{t('ratingPromptTitle')}</h3>
         {session.intention && <p className="text-sm mb-5" style={{ color: 'var(--ink-soft)' }}>{session.intention}</p>}

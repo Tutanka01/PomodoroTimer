@@ -52,10 +52,5 @@ export function setVolumeLinear(v01) {
   el.volume = Math.min(1, Math.max(0, v01));
 }
 
-export function getVolumeLinear() {
-  const el = ensureEl();
-  return el.volume;
-}
-
 export function getIsPlaying() { return isPlaying; }
 export function getCurrentUrl() { return currentUrl; }

@@ -54,7 +54,3 @@ export function playNotificationSound(workFinished) {
   playTone(first, 0, 0.18, 0.12);
   playTone(second, 0.15, 0.18, 0.1);
 }
-
-export function stopAllAudio() {
-  // No persistent graph to stop: one-shot nodes end on their own.
-}

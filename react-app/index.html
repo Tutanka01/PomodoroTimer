@@ -10,6 +10,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Applique le thème enregistré avant le premier rendu (évite un flash clair).
+      (function () {
+        try {
+          var theme = localStorage.getItem('flow-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.style.colorScheme = theme;
+          var apply = function () {
+            document.body.classList.add(theme === 'dark' ? 'theme-night' : 'theme-day');
+            var meta = document.getElementById('theme-color-meta');
+            if (meta) meta.content = theme === 'dark' ? '#16130f' : '#faf8f4';
+          };
+          if (document.body) apply();
+          else document.addEventListener('DOMContentLoaded', apply);
+        } catch (e) { /* stockage indisponible : thème par défaut */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

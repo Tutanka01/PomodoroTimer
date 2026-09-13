@@ -1,17 +1,7 @@
-// Utility functions for analytics & gamification
-// All functions are pure (no side-effects) and accept plain JS objects.
-// Expected shape:
-//   session: { started_at: ISOString, ended_at: ISOString, duration_seconds:number, mode:'pomodoro'|'break' }
-//   daily: { day:'YYYY-MM-DD', focus_seconds:number, pomodoro_count?:number }
-
-export function computeHourlyHistogram(sessions) {
-  const hours = Array.from({length:24},()=>0);
-  sessions.filter(s=>s.mode==='pomodoro').forEach(s=>{
-    const d = new Date(s.started_at);
-    hours[d.getHours()] += s.duration_seconds || 0;
-  });
-  return hours; // seconds per hour
-}
+// Utilitaires d'analyse & gamification, fonctions pures (aucun effet de bord).
+// Formes attendues :
+//   session: { started_at: ISOString, ended_at: ISOString, duration_seconds: number, mode: 'pomodoro'|'break' }
+//   daily: { day: 'YYYY-MM-DD', focus_seconds: number, pomodoro_count?: number }
 
 export function computeConsistency(daily, rangeDays) {
   if (!rangeDays || rangeDays <=0) return 0;
@@ -76,18 +66,6 @@ export function computeLevel(totalFocusMinutes) {
   }
 }
 
-export function deriveBadges({ totalFocusMin, streak, longestStreak, pomodoroCount }) {
-  const badges = [];
-  if (totalFocusMin >= 100) badges.push({ id:'100min', label:'100m Focus' });
-  if (totalFocusMin >= 1000) badges.push({ id:'1000min', label:'1000m Focus' });
-  if (streak >= 3) badges.push({ id:'streak3', label:'3 Day Streak' });
-  if (streak >= 7) badges.push({ id:'streak7', label:'7 Day Streak' });
-  if (longestStreak >= 14) badges.push({ id:'streak14', label:'14 Day Streak' });
-  if (pomodoroCount >= 50) badges.push({ id:'50pomo', label:'50 Pomodoros' });
-  if (pomodoroCount >= 200) badges.push({ id:'200pomo', label:'200 Pomodoros' });
-  return badges;
-}
-
 export function buildMonthMatrix(sessions, year, month) {
   const now = new Date();
   const targetYear = year ?? now.getFullYear();
@@ -121,15 +99,4 @@ export function buildMonthMatrixFromDaily(daily, year, month) {
     duration_seconds: entry.focus_seconds || 0,
   }));
   return buildMonthMatrix(sessions, year, month);
-}
-
-// Aggregate quick stats from session list
-export function aggregateSessionStats(sessions) {
-  const focusSessions = (sessions||[]).filter(s=>s.mode==='pomodoro');
-  const totalFocusSeconds = focusSessions.reduce((a,s)=>a+(s.duration_seconds||0),0);
-  const totalSessions = focusSessions.length;
-  const avgPomodoroMinutes = totalSessions ? Math.round(totalFocusSeconds / totalSessions / 60) : 0;
-  const totalSecondsAll = (sessions||[]).reduce((a,s)=>a+(s.duration_seconds||0),0) || 1; // avoid 0
-  const focusRatio = Math.round((totalFocusSeconds / totalSecondsAll) * 100) || 0;
-  return { totalFocusSeconds, totalSessions, avgPomodoroMinutes, focusRatio };
 }

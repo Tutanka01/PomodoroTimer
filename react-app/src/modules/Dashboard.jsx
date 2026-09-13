@@ -176,7 +176,7 @@ export function DashboardPage({ isDark = false, toggleTheme = () => {} }) {
         <div className="mt-10 grid gap-7 xl:grid-cols-12 auto-rows-min dashboard-grid">
           <TodayFocusPanel loading={loading} todayFocusMin={todayFocusMin} todayPomodoros={todayPomodoros} goal={DAILY_GOAL_MIN} goalProgress={goalProgress} avgPomodoroLength={avgPomodoroLength} onGoalChange={async (val)=>{ setSavingGoal(true); await upsertUserPreferences(user,{ daily_focus_goal_min: val}); await loadPrefs(); setSavingGoal(false); }} savingGoal={savingGoal} />
           <StreaksPanel loading={loading || lifetime.loading} current={streak} longest={longestStreak} consistency={consistency} rangeLabel={rangeLabel} goalAchieved={goalProgress>=1} />
-          <section className="panel relative rounded-2xl p-5 xl:col-span-8 order-5 enhanced-panel" aria-labelledby="timelineHeading">
+          <section className="panel relative rounded-2xl p-5 xl:col-span-12 order-5 enhanced-panel" aria-labelledby="timelineHeading">
             <div className="mini-grid-bg" />
             <h2 id="timelineHeading" className="sr-only">{t('timeline')} · {rangeLabel}</h2>
             <ChartsSection loading={loading} series={timelineSeries} granularity={timelineGranularity} compare={compareRange} rangeLabel={rangeLabel} rangeSummary={rangeSummary} />
@@ -249,7 +249,7 @@ function modeLabel(mode) {
 function TodayFocusPanel({ loading, todayFocusMin, todayPomodoros, goal, goalProgress, avgPomodoroLength, onGoalChange, savingGoal }) {
   const pct = Math.round(goalProgress*100);
   return (
-    <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-4 order-1">
+    <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-6 order-1">
       <div className="mini-grid-bg" />
       <h2 className="text-sm uppercase tracking-wide opacity-60">{t('today')}</h2>
       <div className="flex items-center gap-6">
@@ -288,7 +288,7 @@ function GoalEditor({ current, onChange, saving }) {
 
 function StreaksPanel({ loading, current, longest, consistency, rangeLabel, goalAchieved }) {
   return (
-    <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-4 order-2">
+    <section className="panel relative rounded-2xl p-5 flex flex-col gap-5 lg:col-span-6 order-2">
       <div className="mini-grid-bg" />
       <h2 className="text-sm uppercase tracking-wide opacity-60">{t('streaks')}</h2>
       <div className="grid grid-cols-2 gap-4">
@@ -590,7 +590,7 @@ function RecentSessions({ loading, sessions }) {
               <span className="opacity-60 tabular-nums">{formatClock(s.started_at)}</span>
               <span className="opacity-60 tabular-nums">{formatClock(s.ended_at)}</span>
               <span className="opacity-60 tabular-nums">{Math.round(s.duration_seconds/60)}</span>
-              <span className="truncate opacity-60" title={s.intention || ''}>{s.intention || '—'}</span>
+              <span className="truncate opacity-60" title={s.intention || ''}>{s.intention || '—'}{s.productivity_rating ? ` · ★${s.productivity_rating}` : ''}</span>
             </div>
           ))}
           {!loading && rows.length===0 && (
