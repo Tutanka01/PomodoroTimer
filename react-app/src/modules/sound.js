@@ -1,59 +1,60 @@
-// Legacy-inspired, softened audio layer
-import * as Tone from 'tone';
+// Native Web Audio sound effects — no dependencies.
+// Tone.js was removed: two short chimes don't justify a full audio framework.
 
-let initialized = false;
-let notificationSynth; // FMSynth (legacy end sound)
-let startSynth;        // AMSynth (legacy start sound)
-let fxChorus, fxReverb;
+let audioCtx = null;
 
+// Lazily create a single AudioContext and resume it if the browser suspended it.
 export async function ensureAudio() {
-  if (initialized) return;
-  await Tone.start();
-  if (!fxChorus) fxChorus = new Tone.Chorus(4, 2.5, 0.15).start();
-  if (!fxReverb) fxReverb = new Tone.Reverb({ decay: 2.0, wet: 0.18 });
-  if (!notificationSynth) {
-    notificationSynth = new Tone.FMSynth({
-      harmonicity: 3,
-      modulationIndex: 10,
-      oscillator: { type: 'sine' },
-      modulation: { type: 'sine' },
-      envelope: { attack: 0.005, decay: 0.9, sustain: 0.0, release: 1.2 },
-      modulationEnvelope: { attack: 0.005, decay: 0.18, sustain: 0.0, release: 0.2 }
-    }).chain(fxChorus, fxReverb, new Tone.Volume(-4), Tone.Destination);
+  try {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return; // no Web Audio support: stay silent instead of throwing
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+  } catch (e) {
+    console.error('AudioContext unavailable', e);
   }
-  if (!startSynth) {
-    startSynth = new Tone.AMSynth({
-      harmonicity: 2.5,
-      oscillator: { type: 'triangle' },
-      modulation: { type: 'sine' },
-      envelope: { attack: 0.002, decay: 0.14, sustain: 0.0, release: 0.14 },
-      modulationEnvelope: { attack: 0.002, decay: 0.09, sustain: 0.0, release: 0.09 }
-    }).chain(fxChorus, fxReverb, new Tone.Volume(-6), Tone.Destination);
-  }
-  initialized = true;
 }
 
+// One-shot oscillator with a soft exponential envelope. Nodes are created per
+// call and released to the GC when the sound ends (no persistent graph).
+function playTone(freq, delay, duration, peak = 0.12) {
+  if (!audioCtx || audioCtx.state !== 'running') return;
+  try {
+    const t0 = audioCtx.currentTime + delay;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.03);
+  } catch (e) {
+    console.error('Sound playback failed', e);
+  }
+}
+
+const NOTE = { B4: 493.88, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880.0, B5: 987.77, C6: 1046.5 };
+
 export function playStartSound(isWork) {
-  if (!initialized) return;
-  const now = Tone.now();
-  // Two short ascending notes, slightly higher if work session
-  startSynth.triggerAttackRelease(isWork ? 'E5' : 'D5', '16n', now, 0.7);
-  startSynth.triggerAttackRelease(isWork ? 'B5' : 'A5', '16n', now + 0.12, 0.6);
+  // Two short ascending notes, slightly higher for a work session.
+  const [first, second] = isWork ? [NOTE.E5, NOTE.B5] : [NOTE.D5, NOTE.A5];
+  playTone(first, 0, 0.14, 0.12);
+  playTone(second, 0.12, 0.14, 0.1);
 }
 
 export function playNotificationSound(workFinished) {
-  if (!initialized) return;
-  const now = Tone.now();
-  // Simple motif, brighter if finishing a pomodoro
-  if (workFinished) {
-    notificationSynth.triggerAttackRelease('C6', '8n', now, 0.9);
-    notificationSynth.triggerAttackRelease('G5', '8n', now + 0.15, 0.75);
-  } else {
-    notificationSynth.triggerAttackRelease('E5', '8n', now, 0.6);
-    notificationSynth.triggerAttackRelease('B4', '8n', now + 0.14, 0.5);
-  }
+  // Small two-note motif, brighter when a pomodoro finishes than for a break.
+  const [first, second] = workFinished ? [NOTE.C6, NOTE.G5] : [NOTE.E5, NOTE.B4];
+  playTone(first, 0, 0.18, 0.12);
+  playTone(second, 0.15, 0.18, 0.1);
 }
 
 export function stopAllAudio() {
-  // simple guard to allow future cleanup if needed
+  // No persistent graph to stop: one-shot nodes end on their own.
 }

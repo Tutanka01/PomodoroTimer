@@ -7,9 +7,8 @@ let isPlaying = false;
 function ensureEl() {
   if (!audioEl) {
     audioEl = new Audio();
-    audioEl.preload = 'auto';
+    audioEl.preload = 'metadata';
     audioEl.loop = true;
-    audioEl.crossOrigin = 'anonymous';
     audioEl.volume = 0.26; // default soft level
     audioEl.addEventListener('play', () => { isPlaying = true; });
     audioEl.addEventListener('pause', () => { isPlaying = false; });
