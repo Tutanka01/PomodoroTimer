@@ -43,6 +43,9 @@ pids
 *.seed
 *.pid.lock
 
+# Base SQLite locale (serveur node server/index.js)
+/data/
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov
@@ -89,6 +92,3 @@ coverage/
 
 # TernJS port file
 .tern-port
-
-#ignore sound folder
-*brown+rain-sound.mp3

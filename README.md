@@ -1,171 +1,109 @@
 # Flow Pomodoro Timer
 
-Un minuteur Pomodoro moderne, réactif et fiable avec statistiques avancées, authentification Supabase et déploiement Docker/Nginx prêt pour la production.
+Minuteur Pomodoro avec statistiques, auto-hébergé. Le serveur Node sert à la fois l'API JSON et l'application React, et stocke tout dans un fichier SQLite local.
 
-## 🎯 Objectif
-Optimiser les sessions de concentration (focus) en offrant : précision du temps (anti-dérive), visualisation des progrès, suivi des habitudes et expérience UI soignée (palette froide cyan/bleu, glassmorphism).
+## Fonctionnalités
 
-## ✨ Fonctionnalités principales
-- Timer Pomodoro fiable (horodatage epoch + resynchronisation) sans dérive ni pause en onglet inactif.
-- Durées configurables (Focus / Short Break / Long Break) avec presets + contrôles +/-.
-- Démarrage manuel des pauses (pas d’enchaînement forcé).
-- Historique sessions enregistré (intention, rating optionnel post-session).
-- Dashboard analytique :
-  - Streak quotidienne, plus longue série, constance (% jours actifs)
-  - Progression de niveau (XP cumulée)
-  - Calendrier mensuel navigable
-  - Vue horaire (fondations pour densité journalière)
-- Auth Supabase (email + Google OAuth) — usage anonyme possible.
-- Politique RLS stricte (chaque utilisateur ne lit que ses données).
-- Thème clair/sombre + palette froide (bleu / cyan / teal) homogène.
-- Interface inline Settings (plus de modal intrusive).
-- Build Vite + React 18 + Tailwind + CSS custom (glass, gradients, animations douces).
-- Conteneur multi‑stage avec Nginx optimisé (gzip, cache assets long-terme, fallback SPA, headers sécurité de base).
+- Minuteur Focus / Pause courte / Pause longue basé sur des horodatages (aucune dérive, exact même onglet inactif).
+- Compte email + mot de passe, session par cookie HttpOnly ; usage anonyme possible sans persistance.
+- Historique des sessions avec intention et note de productivité facultative (1–5).
+- Statistiques : agrégats journaliers, séries, calendrier, objectif de focus quotidien.
+- Thème clair/sombre, interface responsive.
 
-## 🧱 Pile technique
-| Couche | Outils |
-|--------|--------|
-| UI | React 18, Vite, Tailwind, CSS custom gradients & glass |
-| Audio | Tone.js |
-| Auth & Données | Supabase (Postgres + Auth + RLS) |
-| Déploiement | Docker multi-stage (Node build → Nginx runtime) |
-| Sécurité base | Row Level Security, vues agrégées read-only |
+## Stack
 
-## 🗂 Structure simplifiée
-```
-.
-├─ Dockerfile
-├─ docker-compose.yml
-├─ nginx.conf
-├─ react-app/
-│  ├─ package.json
-│  ├─ src/
-│  │  ├─ main.css
-│  │  ├─ main.jsx / App.jsx
-│  │  ├─ modules/
-│  │  │  ├─ usePomodoro.js (logique timer epoch)
-│  │  │  ├─ useAuth.js
-│  │  │  ├─ statsUtils.js
-│  │  │  ├─ Dashboard.jsx
-│  │  │  ├─ TimerDisplay.jsx
-│  │  │  └─ sessionStore.js
-│  └─ .env.example
-└─ README.md
-```
+| Couche | Technologie |
+|--------|-------------|
+| Front | React 18 + Vite + Tailwind |
+| Serveur | Node natif (`node:http`, `node:crypto`) — **zéro dépendance npm** |
+| Base | SQLite via `node:sqlite` (module natif, Node ≥ 24) |
+| Déploiement | Docker multi-stage, un seul conteneur |
 
-## ⏱ Logique du timer
-Contrairement à un simple setInterval accumulatif (sujet au throttling navigateur), on stocke :
-- `targetEpoch` (timestamp de fin en ms)
-- Au tick (rafraîchi via interval léger + visibility change) on calcule `remaining = max(0, targetEpoch - Date.now())`.
-Avantages : précision stable, pas de dérive cumulative, reprise exacte après tab inactif.
+## Démarrage Docker
 
-## 🔐 Données & Sécurité
-(Table SQL indicative — non incluse ici intégralement)
-- `focus_sessions`: user_id (UUID), start_ts, end_ts, duration_sec, kind (focus/break), intention, rating (nullable).
-- Vue/jour agrégée pour métriques (streak & régularité) — accessible en lecture seule.
-- RLS : chaque requête filtrée par auth.uid() = user_id.
-
-## 🖥 UI / UX
-- Palette froide (cyan / bleu / teal) appliquée à timer, barre de progression, points cycles, cartes accent.
-- Glass panels + ombres subtiles + animations de gradient lentes.
-- Pas de compteurs agressifs / ni compte à rebours 3‑2‑1 (supprimé).
-- Paramètres inline (plus accessible / moins context-switch).
-
-## ⚙️ Variables d’environnement
-Copier `react-app/.env.example` vers un `.env` à la racine (utilisé par docker-compose) :
-```
-VITE_SUPABASE_URL= https://<your-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY= <public-anon-key>
-```
-La clé anon est publique (lecture contrôlée par RLS). Ne jamais exposer la service_role dans le front.
-
-## 🐳 Exécution avec Docker Compose
-Build + run (utilise `.env` racine) :
-```
+```bash
+git clone https://github.com/Tutanka01/PomodoroTimer.git
+cd PomodoroTimer
 docker compose up -d --build
 ```
-Accès : http://localhost:8080
 
-Si problème de cache build, forcer :
-```
-docker compose build --no-cache web
-```
-Logs :
-```
-docker compose logs -f
-```
-Arrêt & nettoyage :
-```
-docker compose down
+L'application est disponible sur <http://localhost:8080>. Aucun fichier `.env` n'est nécessaire.
+
+## Où sont les données
+
+Tout vit dans le volume Docker nommé `flow-data` (base `/data/flow.db` en mode WAL). Les données survivent aux mises à jour et à la suppression du conteneur.
+
+Sauvegarde :
+
+```bash
+docker compose stop
+docker run --rm -v flow-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/flow-backup.tgz -C /data .
+docker compose start
 ```
 
-## 🔧 Scripts NPM (dans `react-app/`)
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Dev server Vite (HMR) |
-| `npm run build` | Build production (minification + hashing) |
-| `npm run preview` | Prévisualisation locale du build |
+Restauration :
 
-## 🚀 Build Production (manuel hors compose)
+```bash
+docker compose stop
+docker run --rm -v flow-data:/data -v "$PWD":/backup alpine \
+  sh -c 'find /data -mindepth 1 -delete && tar xzf /backup/flow-backup.tgz -C /data'
+docker compose start
 ```
+
+## Variables d'environnement
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `PORT` | `3000` | Port HTTP du serveur. |
+| `DB_PATH` | `./data/flow.db` | Fichier SQLite (dossier parent créé automatiquement). |
+| `PUBLIC_DIR` | `react-app/dist` | Dossier des fichiers statiques (build Vite). |
+| `SESSION_SECRET` | auto-généré | Secret HMAC des cookies ; s'il est absent, généré et conservé dans `data/.session-secret` (chmod 0600). |
+| `COOKIE_SECURE` | — | `1` derrière un reverse proxy HTTPS (cookie `Secure`). |
+
+Voir `.env.example` pour un modèle commenté.
+
+## Développement local
+
+Node ≥ 24 requis (testé sur Node 26).
+
+```bash
+# Terminal 1 — API + base SQLite
+node server/index.js
+
+# Terminal 2 — front Vite avec proxy /api vers :3000
 cd react-app
-cp .env.example .env  # remplir valeurs
-npm ci
-npm run build
-# dist/ prêt à être servi (Nginx déjà config dans l’image)
+npm install
+npm run dev
 ```
 
-## 🛡 Sécurité front / Nginx
-- GZIP + cache long (assets hashés). HTML forcé no-cache.
-- En‑têtes : X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy.
-- Possibles améliorations futures : CSP stricte, COOP/COEP, SRI.
+Front sur <http://localhost:5173>, API sur <http://localhost:3000>.
 
-## 🔍 Observabilité basique
-Health endpoint : `/healthz` (retourne `ok`).
+Tests du serveur :
 
-## 🧪 Fiabilité / Edge cases
-| Cas | Comportement |
-|-----|--------------|
-| Tab inactive | Timer reste exact via epoch diff |
-| Changement durée en cours de cycle | Appliqué au prochain cycle |
-| Perte focus puis retour | Recalcule restants sans saut visible |
-| Session <= 1s restante | Transition propre (callback completion) |
+```bash
+node --test server/
+```
 
-## 🗺 Roadmap (suggestions)
-- Injection runtime config (éviter bake-time pour URL Supabase).
-- Histogramme horaire complet (graduations + densité).
-- Mode ultra-focus (masque UI non-essentielle avec toggle).
-- Gradient dynamique basé sur % temps écoulé.
-- CSP + SRI + Trusted Types.
-- PWA (offline + add to home screen).
+## Mise à jour
 
-## ♻️ Changer de palette (guide rapide)
-Tout centralisé dans `main.css` (sélecteurs `.timer-*`, `.focus-progress`, `.cycle-dot`, `.metric-card.accent`). Modifier gradients en conservant contrastes AA.
+```bash
+git pull
+docker compose up -d --build
+```
 
-## 🧩 Conception niveau / XP
-Niveaux calculés sur somme de durées focus (ex: palier progressif). Voir `statsUtils.js` pour la formule (adaptable).
+Le volume `flow-data` n'est pas touché ; les migrations de schéma sont appliquées au démarrage.
 
-## 📦 Docker – Détails
-Multi‑stage :
-1. `deps`: install dépendances (dev incluses pour build Vite).
-2. `build`: build production Vite.
-3. `runtime`: Nginx minimal (assets statiques + headers + health).
+## Sécurité
 
-CMD force `daemon off;` + pid dans `/tmp` (support non-root). L’utilisateur `app` possède les répertoires caches/temp/logs.
+- Mots de passe hachés avec `scrypt` (sel aléatoire, comparaison en temps constant).
+- Cookie de session signé HMAC-SHA256, `HttpOnly`, `SameSite=Lax`, expiration 30 jours.
+- Limitation des tentatives de connexion/inscription : 10 échecs par IP et par 15 minutes.
+- Validation stricte des entrées, corps JSON limité à 64 Ko, requêtes SQL paramétrées.
+- En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`.
+- Pas de dépendance npm côté serveur : surface d'attaque minimale.
+- En HTTPS (reverse proxy), activez `COOKIE_SECURE=1` et définissez un `SESSION_SECRET` fixe.
 
-## 📝 Licence
-MIT. Voir en-têtes des sources si ajout futur.
+## Licence
 
-## 🤝 Contributions
-Fork, branche feature, PR. Idées de stats ou optimisations bienvenues.
-
-## ❓ FAQ rapide
-| Question | Réponse |
-|----------|---------|
-| Timer s’arrête quand fenêtre inactive ? | Non, basé sur epoch. |
-| Peut-on utiliser sans compte ? | Oui (mode anonyme), mais pas de persistance cloud. |
-| Les clés Supabase sont-elles sensibles ? | Clé anon publique seulement. |
-| Pourquoi pas service worker ? | PWA prévu en roadmap. |
-
----
-Pour toute amélioration souhaitée (CSP, PWA, runtime config), ouvrir une issue ou adapter directement.
+MIT.

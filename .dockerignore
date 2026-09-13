@@ -1,29 +1,35 @@
-# Dependencies — the image installs its own platform-correct node_modules.
-# Without this, the host (macOS) node_modules leaks into the build context and
-# overwrites the clean Linux one (COPY react-app/ ./), breaking `vite build`.
+# Dépendances — l'image installe ses propres node_modules (Linux).
+# Sans cela, le node_modules macOS du host écrase celui du build.
 **/node_modules
 
-# Build outputs
+# Sorties de build
 **/dist
 **/build
 
-# Version control & meta
+# Versionnage & méta
 .git
 .gitignore
 .dockerignore
+README.md
 
-# Env & secrets — passed to the build as build args by docker-compose,
-# so the .env file itself must never enter the image context.
+# Env & secrets — jamais dans l'image
 .env
 .env.*
 **/.env
 **/.env.*
 
-# Docker files
+# Fichiers Docker (inutiles dans le contexte)
 Dockerfile
 docker-compose.yml
 
-# Logs & OS / editor cruft
+# Données locales et secret de session
+data/
+.session-secret
+
+# Tests serveur (inutiles dans l'image de prod)
+server/test.js
+
+# Logs & divers
 *.log
 **/*.log
 .DS_Store
