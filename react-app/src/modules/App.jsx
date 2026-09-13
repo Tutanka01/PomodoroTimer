@@ -1,45 +1,62 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TimerDisplay } from './TimerDisplay.jsx';
 import { ModeSelector } from './ModeSelector.jsx';
 import { Intention } from './Intention.jsx';
 import { ThemeToggle } from './ThemeToggle.jsx';
 import SoundControl from './SoundControl.jsx';
-import { useTheme } from './useTheme.js';
 import { usePomodoro } from './usePomodoro.js';
-import { logSession, fetchRecentStats } from './sessionStore.js';
+import { logSession, updateSessionRating } from './sessionStore.js';
 import { t } from './i18n.js';
 import { useAuth } from './useAuth.js';
 import { Link } from 'react-router-dom';
 
-const MODE_LABELS = { pomodoro: 'focus', shortBreak: 'break', longBreak: 'long break' };
+const MODE_LABELS = {
+  pomodoro: t('modePomodoro'),
+  shortBreak: t('modeShortBreak'),
+  longBreak: t('modeLongBreak')
+};
 
-export default function App() {
-  const { isDark, toggleTheme } = useTheme();
-  const [pendingRating, setPendingRating] = useState(null);
+export default function App({ isDark, toggleTheme }) {
+  const [pendingRating, setPendingRating] = useState(null); // session enregistrée en attente de note
   const [intention, setIntention] = useState('');
   const { user, signOut } = useAuth();
-  const [stats, setStats] = useState({ sessions: [], daily: [] });
   const [showSettings, setShowSettings] = useState(false);
+  const settingsPanelRef = useRef(null);
 
   const { state, start, pause, reset, switchMode, updateDurations } = usePomodoro({
     onSessionComplete: async ({ mode, startedAt, endedAt }) => {
-      if (mode === 'pomodoro' && user) {
-        setPendingRating({ mode, startedAt, endedAt, intention });
-      } else {
-        await logSession({ user, mode, startedAt, endedAt, intention });
-        if (user) refreshStats();
+      // La session est TOUJOURS enregistrée ; la note n'est qu'une étape facultative ensuite.
+      const session = user ? await logSession({ mode, startedAt, endedAt, intention, interrupted: false }) : null;
+      if (mode === 'pomodoro') {
+        setIntention('');
+        if (session) setPendingRating(session);
       }
     }
   });
 
-  async function refreshStats() {
-    if (!user) return;
-    const data = await fetchRecentStats(user, { days: 7 });
-    setStats(data);
-  }
-  useEffect(() => { if (user) refreshStats(); }, [user]);
+  // Raccourcis clavier : Espace = démarrer/pause, R = réinitialiser, Échap = fermer les réglages.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || pendingRating) return;
+      const el = e.target;
+      // Ne pas voler Espace/Entrée quand un contrôle interactif a le focus.
+      if (el && el.closest && el.closest('button, a, input, textarea, select, [contenteditable]')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        state.isRunning ? pause() : start();
+      } else if (e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        reset();
+      } else if (e.key === 'Escape') {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [state.isRunning, start, pause, reset]);
 
-  const onLongPress = useCallback(() => setShowSettings(true), []);
+  // Donne le focus au panneau de réglages à l'ouverture.
+  useEffect(() => { if (showSettings) settingsPanelRef.current?.focus(); }, [showSettings]);
 
   const atFullDuration = state.timeRemaining >= state.durations[state.currentMode] * 60;
   const primaryLabel = state.isRunning ? t('pause') : (atFullDuration ? t('start') : t('resume'));
@@ -50,8 +67,8 @@ export default function App() {
         <div className="wordmark"><span className="mark" aria-hidden="true" />Flow</div>
         <div className="flex items-center gap-3 sm:gap-4">
           <button
-            aria-label="Timer settings"
-            title="Settings"
+            aria-label={t('timerSettings')}
+            title={t('settingsTitle')}
             onClick={() => setShowSettings(v => !v)}
             className="icon-btn"
           >
@@ -73,9 +90,25 @@ export default function App() {
       </header>
 
       {showSettings && (
-        <div className="settings-stack">
-          <SoundControl />
-          <InlineSettings durations={state.durations} onChange={updateDurations} />
+        <div className="settings-layer">
+          <div className="settings-backdrop" onClick={() => setShowSettings(false)} />
+          <aside
+            ref={settingsPanelRef}
+            tabIndex={-1}
+            className="settings-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('settingsTitle')}
+          >
+            <header className="settings-head">
+              <h2 className="settings-title">{t('settingsTitle')}</h2>
+              <button className="icon-btn" onClick={() => setShowSettings(false)} aria-label={t('close')}>✕</button>
+            </header>
+            <div className="settings-body">
+              <SoundControl />
+              <InlineSettings durations={state.durations} onChange={updateDurations} disabled={state.isRunning} />
+            </div>
+          </aside>
         </div>
       )}
 
@@ -85,17 +118,17 @@ export default function App() {
         timeRemaining={state.timeRemaining}
         progress={state.progress}
         modeLabel={MODE_LABELS[state.currentMode]}
-        onLongPress={onLongPress}
       />
 
       {state.currentMode === 'pomodoro' && !state.isRunning && (
         <Intention value={intention} onChange={setIntention} />
       )}
 
-      <div className="cycle-row" aria-label={`${state.pomodoroCount} of 4 focus sessions completed`}>
+      <div className="cycle-row">
         {[0, 1, 2, 3].map(i => (
           <span key={i} className={`cycle-dot${i < state.pomodoroCount ? ' on' : ''}`} />
         ))}
+        <span className="cycle-label">{state.pomodoroCount}/4 {t('cycleBeforeLongBreak')}</span>
       </div>
 
       <div className="controls-row">
@@ -107,86 +140,119 @@ export default function App() {
 
       <footer className="timer-footer">{t('footer')}</footer>
 
-      {pendingRating && user && (
-        <RatingModal data={pendingRating} onClose={async (rating, interrupted) => {
-          if (rating || interrupted !== undefined) {
-            await logSession({ user, ...pendingRating, rating: rating || null });
-            if (user) refreshStats();
-          }
-          setPendingRating(null);
-        }} />
+      {pendingRating && (
+        <RatingModal
+          session={pendingRating}
+          onClose={async (rating) => {
+            if (rating) await updateSessionRating(pendingRating.id, rating);
+            setPendingRating(null);
+          }}
+        />
       )}
     </main>
   );
 }
 
-function RatingModal({ data, onClose }) {
-  const [value, setValue] = useState(3);
+function RatingModal({ session, onClose }) {
+  const [value, setValue] = useState(null);
   return (
-    <div className="modal-backdrop" onClick={() => onClose()}>
-      <div className="modal-card" onClick={e => e.stopPropagation()}>
-        <button onClick={() => onClose()} className="modal-close absolute top-3 right-4 text-sm" aria-label={t('close')}>✕</button>
-        <h3 className="modal-title mb-1">{t('ratingPromptTitle')}</h3>
-        <p className="text-sm mb-5" style={{ color: 'var(--ink-soft)' }}>{data.intention || t('footer')}</p>
-        <div className="flex justify-between mb-6">
+    <div className="modal-backdrop" onClick={() => onClose(null)}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="rating-title" onClick={e => e.stopPropagation()}>
+        <button onClick={() => onClose(null)} className="modal-close absolute top-3 right-4 text-sm" aria-label={t('close')}>✕</button>
+        <h3 id="rating-title" className="modal-title mb-1">{t('ratingPromptTitle')}</h3>
+        {session.intention && <p className="text-sm mb-5" style={{ color: 'var(--ink-soft)' }}>{session.intention}</p>}
+        <div className="flex justify-between mb-3" role="radiogroup" aria-labelledby="rating-title">
           {[1, 2, 3, 4, 5].map(n => (
-            <button key={n} onClick={() => setValue(n)} className={`rating-btn${value === n ? ' is-active' : ''}`}>{n}</button>
+            <button
+              key={n}
+              role="radio"
+              aria-checked={value === n}
+              onClick={() => setValue(n)}
+              className={`rating-btn${value === n ? ' is-active' : ''}`}
+            >{n}</button>
           ))}
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => onClose(value, false)} className="btn-soft">{t('save')}</button>
-          <button onClick={() => onClose(null, true)} className="btn-soft secondary">{t('ratingSkip')}</button>
+        <div className="rating-scale" aria-hidden="true">
+          <span>{t('rating1')}</span>
+          <span>{t('rating3')}</span>
+          <span>{t('rating5')}</span>
+        </div>
+        <p className="rating-hint">{t('ratingHint')}</p>
+        <div className="btn-row">
+          <button onClick={() => onClose(value)} disabled={!value} className="btn-soft">{t('ratingSave')}</button>
+          <button onClick={() => onClose(null)} className="btn-soft secondary">{t('ratingLater')}</button>
         </div>
       </div>
     </div>
   );
 }
 
-function InlineSettings({ durations, onChange }) {
+function InlineSettings({ durations, onChange, disabled }) {
   const [form, setForm] = useState(durations);
   const [dirty, setDirty] = useState(false);
   useEffect(() => { setForm(durations); setDirty(false); }, [durations]);
 
   const rows = [
-    ['pomodoro', t('durationPomodoro')],
-    ['shortBreak', t('durationShortBreak')],
-    ['longBreak', t('durationLongBreak')]
+    ['pomodoro', t('modePomodoro')],
+    ['shortBreak', t('modeShortBreak')],
+    ['longBreak', t('modeLongBreak')]
   ];
-  const update = (k, v) => setForm(s => { const val = Math.max(1, Number(v) || s[k]); setDirty(true); return { ...s, [k]: val }; });
+  const update = (k, v) => {
+    if (disabled) return;
+    setForm(s => {
+      const val = Math.min(180, Math.max(1, Number(v) || s[k]));
+      return { ...s, [k]: val };
+    });
+    setDirty(true);
+  };
   const presets = [
     { label: '25 / 5 / 15', p: 25, s: 5, l: 15 },
     { label: '45 / 8 / 20', p: 45, s: 8, l: 20 },
     { label: '52 / 17 / 25', p: 52, s: 17, l: 25 }
   ];
-  const applyPreset = (p) => { setForm({ pomodoro: p.p, shortBreak: p.s, longBreak: p.l }); setDirty(true); };
+  const applyPreset = (p) => {
+    if (disabled) return;
+    setForm({ pomodoro: p.p, shortBreak: p.s, longBreak: p.l });
+    setDirty(true);
+  };
   const isPresetActive = (p) => form.pomodoro === p.p && form.shortBreak === p.s && form.longBreak === p.l;
 
   return (
     <div className="card">
       <div className="card-head">
-        <h4 className="card-title">{t('durationsTitle')}</h4>
-        {dirty && <span className="tag">Unsaved</span>}
+        <h3 className="card-title">{t('durationsTitle')}</h3>
+        {dirty && !disabled && <span className="tag">{t('unsaved')}</span>}
       </div>
+      {disabled && <p className="rating-hint">{t('durationsLocked')}</p>}
       <div className="field-grid">
         {rows.map(([k, label]) => (
           <div key={k} className="field">
             <span className="field-label">{label}</span>
             <div className="field-stepper">
-              <button onClick={() => update(k, form[k] - 1)} className="step-btn" aria-label={`${label} minus`}>−</button>
-              <input className="num-field" type="number" value={form[k]} onChange={e => update(k, e.target.value)} aria-label={label} />
-              <button onClick={() => update(k, form[k] + 1)} className="step-btn" aria-label={`${label} plus`}>+</button>
+              <button disabled={disabled} onClick={() => update(k, form[k] - 1)} className="step-btn" aria-label={`${label} −1`}>−</button>
+              <input
+                className="num-field"
+                type="number"
+                min="1"
+                max="180"
+                value={form[k]}
+                disabled={disabled}
+                onChange={e => update(k, e.target.value)}
+                aria-label={label}
+              />
+              <button disabled={disabled} onClick={() => update(k, form[k] + 1)} className="step-btn" aria-label={`${label} +1`}>+</button>
             </div>
           </div>
         ))}
       </div>
       <div className="chip-row mb-4">
         {presets.map(p => (
-          <button key={p.label} onClick={() => applyPreset(p)} className={`chip${isPresetActive(p) ? ' is-active' : ''}`}>{p.label}</button>
+          <button key={p.label} disabled={disabled} onClick={() => applyPreset(p)} className={`chip${isPresetActive(p) ? ' is-active' : ''}`}>{p.label}</button>
         ))}
       </div>
       <div className="btn-row">
-        <button disabled={!dirty} onClick={() => { onChange(form); setDirty(false); }} className="btn-soft">{t('save')}</button>
-        <button disabled={!dirty} onClick={() => { setForm(durations); setDirty(false); }} className="btn-soft secondary">{t('reset')}</button>
+        <button disabled={disabled || !dirty} onClick={() => { onChange(form); setDirty(false); }} className="btn-soft">{t('save')}</button>
+        <button disabled={disabled || !dirty} onClick={() => { setForm(durations); setDirty(false); }} className="btn-soft secondary">{t('reset')}</button>
       </div>
     </div>
   );

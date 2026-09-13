@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 const KEY = 'flow-theme';
+
 export function useTheme() {
   const [theme, setTheme] = useState(()=> localStorage.getItem(KEY) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   useEffect(()=> {
@@ -12,6 +13,9 @@ export function useTheme() {
   }, [theme]);
   useEffect(()=> {
     const handler = (e)=> {
+      const el = e.target;
+      // Ne pas intercepter la frappe dans un champ de saisie.
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
       if(!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase()==='d') {
         e.preventDefault();
         setTheme(t=> t==='dark' ? 'light' : 'dark');
